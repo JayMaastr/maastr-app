@@ -1,11 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = 'https://btgednpwlkimgjwcopru.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0Z2VkbnB3bGtpbWdqd2NvcHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMDkwNzEsImV4cCI6MjA4OTc4NTA3MX0.6rVWXxzZRDkHrJhKm5MW45QZOvNJOv56kSKZG6MpBD0';
-const UPLOAD_WORKER_URL = 'https://maastr-upload.jay-288.workers.dev';
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
 function fallbackPeaks() {
   const p = []; let s = Date.now() & 0xFFFFFF;
@@ -57,6 +52,7 @@ export default function Dashboard() {
   const [projArtist, setProjArtist] = useState('');
   const [pendingFile, setPendingFile] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [statusMsg, setStatusMsg] = useState('');
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
@@ -78,28 +74,44 @@ export default function Dashboard() {
   async function createProject() {
     if (!projName || !pendingFile) return;
     setCreating(true);
-    setShowModal(false);
+    setStatusMsg('Creating project…');
     try {
-      const { data: proj } = await sb.from('projects')
+      const { data: proj, error: projErr } = await sb.from('projects')
         .insert({ title: projName, artist: projArtist || 'Unknown Artist', peaks: [] })
         .select().single();
-      if (proj) {
-        const r = await fetch(UPLOAD_WORKER_URL, {
-          method: 'POST',
-          headers: { 'X-File-Name': pendingFile.name, 'X-Project-Id': proj.id, 'Content-Type': pendingFile.type },
-          body: pendingFile
+      if (projErr) throw projErr;
+
+      setStatusMsg('Uploading audio…');
+      const r = await fetch(UPLOAD_WORKER_URL, {
+        method: 'POST',
+        headers: {
+          'X-File-Name': pendingFile.name,
+          'X-Project-Id': proj.id,
+          'Content-Type': pendingFile.type || 'audio/wav'
+        },
+        body: pendingFile
+      });
+      const result = await r.json();
+
+      if (result.url) {
+        setStatusMsg('Saving track…');
+        await sb.from('tracks').insert({
+          project_id: proj.id,
+          title: projName,
+          audio_url: result.url,
+          mp3_url: result.url,
+          position: 0,
+          peaks: []
         });
-        const result = await r.json();
-        if (result.url) {
-          await sb.from('tracks').insert({
-            project_id: proj.id, title: projName, audio_url: result.url, position: 0, peaks: []
-          });
-        }
-        await loadProjects();
       }
-    } catch (e) { console.error(e); }
+      setShowModal(false);
+      setProjName(''); setProjArtist(''); setPendingFile(null);
+      setStatusMsg('');
+      await loadProjects();
+    } catch (e) {
+      setStatusMsg('Error: ' + e.message);
+    }
     setCreating(false);
-    setProjName(''); setProjArtist(''); setPendingFile(null);
   }
 
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -122,7 +134,8 @@ export default function Dashboard() {
         header{display:flex;align-items:center;justify-content:space-between;padding:20px 0 18px;border-bottom:1px solid var(--border);}
         .logo{font-family:var(--fh);font-size:22px;letter-spacing:-.01em;}
         .logo em{color:var(--amber);font-style:normal;}
-        .avatar{width:32px;height:32px;border-radius:50%;background:var(--surf3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--t2);cursor:pointer;}
+        .avatar{width:32px;height:32px;border-radius:50%;background:var(--surf3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--t2);cursor:pointer;transition:background .15s;}
+        .avatar:hover{background:var(--surf2);}
         .hero{padding:52px 0 40px;display:flex;align-items:flex-end;justify-content:space-between;gap:20px;border-bottom:1px solid var(--border);}
         .hero-title{font-family:var(--fh);font-size:clamp(32px,5vw,52px);line-height:1.05;letter-spacing:-.02em;margin-bottom:10px;}
         .hero-title em{font-style:italic;color:var(--amber);}
@@ -134,11 +147,11 @@ export default function Dashboard() {
         .stat-div{width:1px;background:var(--border);align-self:stretch;}
         .toolbar{display:flex;align-items:center;justify-content:space-between;padding:24px 0 16px;}
         .section-title{font-family:var(--fh);font-size:18px;}
-        .create-btn{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:12px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;}
+        .create-btn{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:12px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;transition:opacity .15s;}
         .create-btn:hover{opacity:.9;}
         .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;padding-bottom:40px;}
-        .card{background:var(--surf);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:border-color .2s,transform .15s;animation:cardIn .3s ease both;}
-        .card:hover{border-color:var(--border2);transform:translateY(-2px);}
+        .card{background:var(--surf);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:border-color .2s,transform .15s,box-shadow .2s;animation:cardIn .3s ease both;}
+        .card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 12px 40px rgba(0,0,0,.4);}
         @keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         .card-header{padding:16px 16px 12px;}
         .card-title{font-family:var(--fh);font-size:16px;margin-bottom:4px;}
@@ -152,14 +165,17 @@ export default function Dashboard() {
         .modal-title{font-family:var(--fh);font-size:24px;margin-bottom:24px;}
         .field{margin-bottom:16px;}
         .field label{display:block;font-size:11px;color:var(--t2);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px;}
-        .field input{width:100%;background:var(--surf2);border:1.5px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--fm);font-size:14px;padding:12px 14px;outline:none;}
+        .field input{width:100%;background:var(--surf2);border:1.5px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--fm);font-size:14px;padding:12px 14px;outline:none;transition:border-color .15s;}
         .field input:focus{border-color:var(--amber);}
-        .dropzone{border:1.5px dashed var(--border2);border-radius:12px;background:var(--surf2);padding:28px 20px;text-align:center;cursor:pointer;font-size:12px;color:var(--t2);}
+        .dropzone{border:1.5px dashed var(--border2);border-radius:12px;background:var(--surf2);padding:28px 20px;text-align:center;cursor:pointer;font-size:12px;color:var(--t2);transition:all .2s;}
         .dropzone:hover{border-color:var(--amber);background:var(--aglow);color:var(--amber);}
-        .modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:24px;border-top:1px solid var(--border);padding-top:20px;}
+        .dropzone.has-file{border-color:var(--amber);background:var(--aglow);color:var(--amber);}
+        .modal-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:24px;border-top:1px solid var(--border);padding-top:20px;}
+        .status-msg{font-size:11px;color:var(--t2);}
         .btn-cancel{font-family:var(--fm);font-size:13px;padding:11px 18px;border-radius:9px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;}
         .btn-create{font-family:var(--fm);font-size:13px;font-weight:500;padding:11px 24px;border-radius:9px;background:var(--amber);color:#000;border:none;cursor:pointer;}
         .btn-create:disabled{opacity:.4;pointer-events:none;}
+        @media(max-width:600px){.hero{flex-direction:column;align-items:flex-start;}.grid{grid-template-columns:1fr;}}
       `}</style>
 
       <div className="app">
@@ -167,7 +183,8 @@ export default function Dashboard() {
           <div className="logo">maastr<em>.</em></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 11, color: 'var(--t3)' }}>{user?.email}</span>
-            <div className="avatar" onClick={() => sb.auth.signOut().then(() => window.location.href = '/auth')}>
+            <div className="avatar" title="Sign out"
+              onClick={() => sb.auth.signOut().then(() => window.location.href = '/auth')}>
               {user?.email?.[0]?.toUpperCase() || '?'}
             </div>
           </div>
@@ -195,7 +212,9 @@ export default function Dashboard() {
         <div className="toolbar">
           <span className="section-title">Projects</span>
           <button className="create-btn" onClick={() => setShowModal(true)}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
             New Project
           </button>
         </div>
@@ -232,12 +251,12 @@ export default function Dashboard() {
       </div>
 
       {showModal && (
-        <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div className="modal-bg" onClick={e => e.target === e.currentTarget && !creating && setShowModal(false)}>
           <div className="modal">
             <div className="modal-title">New Project</div>
             <div className="field">
               <label>Project Name</label>
-              <input value={projName} onChange={e => setProjName(e.target.value)} placeholder="Summer EP 2026" />
+              <input value={projName} onChange={e => setProjName(e.target.value)} placeholder="Summer EP 2026" autoFocus />
             </div>
             <div className="field">
               <label>Artist / Band</label>
@@ -245,17 +264,24 @@ export default function Dashboard() {
             </div>
             <div className="field">
               <label>Audio File (WAV or MP3)</label>
-              <div className="dropzone" onClick={() => document.getElementById('file-upload').click()}>
-                {pendingFile ? pendingFile.name : 'Click to browse or drop a file'}
+              <div className={`dropzone ${pendingFile ? 'has-file' : ''}`}
+                onClick={() => document.getElementById('file-upload').click()}>
+                {pendingFile ? '✓ ' + pendingFile.name : 'Click to browse or drop a file'}
                 <input id="file-upload" type="file" accept=".wav,.mp3,.aiff" style={{ display: 'none' }}
                   onChange={e => setPendingFile(e.target.files[0])} />
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn-cancel" onClick={() => { setShowModal(false); setProjName(''); setProjArtist(''); setPendingFile(null); }}>Cancel</button>
-              <button className="btn-create" disabled={!projName || !pendingFile || creating} onClick={createProject}>
-                {creating ? 'Creating…' : 'Create Project →'}
-              </button>
+              <span className="status-msg">{statusMsg}</span>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn-cancel" disabled={creating}
+                  onClick={() => { setShowModal(false); setProjName(''); setProjArtist(''); setPendingFile(null); setStatusMsg(''); }}>
+                  Cancel
+                </button>
+                <button className="btn-create" disabled={!projName || !pendingFile || creating} onClick={createProject}>
+                  {creating ? 'Creating…' : 'Create Project →'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
