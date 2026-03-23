@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const sb = createClient(
@@ -10,6 +10,73 @@ const sb = createClient(
 function fmt(s) {
   if (!s || isNaN(s)) return '0:00';
   return Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
+}
+
+function fallbackPeaks() {
+  const p = []; let s = Date.now() & 0xFFFFFF;
+  for (let i = 0; i < 100; i++) {
+    s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+    p.push(Math.max(0.04, Math.min(0.96, (0.3 + Math.sin(i/100 * Math.PI) * 0.4) * (0.5 + (s>>>0)/0xFFFFFFFF * 0.5))));
+  }
+  return p;
+}
+
+function Waveform({ peaks, progress, notes, duration, onSeek }) {
+  const ref = useRef(null);
+  const data = (peaks && peaks.length > 4) ? peaks : fallbackPeaks();
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const W = canvas.offsetWidth || 600, H = 80;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+    const cy = H / 2, BAR = 2, GAP = 1, STEP = BAR + GAP;
+    const numBars = Math.floor(W / STEP);
+    const cutoff = Math.floor(numBars * (progress || 0));
+    for (let i = 0; i < numBars; i++) {
+      const pi = Math.floor((i / numBars) * data.length);
+      const amp = data[Math.min(pi, data.length - 1)];
+      const h = Math.max(2, amp * (cy - 4));
+      const played = i < cutoff;
+      const g = ctx.createLinearGradient(0, cy - h, 0, cy + h);
+      if (played) {
+        g.addColorStop(0, 'rgba(232,160,32,.9)');
+        g.addColorStop(.5, 'rgba(232,160,32,.55)');
+        g.addColorStop(1, 'rgba(232,160,32,.12)');
+      } else {
+        g.addColorStop(0, 'rgba(255,255,255,.18)');
+        g.addColorStop(.5, 'rgba(255,255,255,.09)');
+        g.addColorStop(1, 'rgba(255,255,255,.02)');
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(i * STEP, cy - h, BAR, h * 2);
+    }
+    // Note markers
+    if (notes && duration) {
+      notes.forEach(n => {
+        if (n.timestamp_sec == null) return;
+        const x = (n.timestamp_sec / duration) * W;
+        ctx.fillStyle = 'rgba(232,160,32,0.9)';
+        ctx.beginPath();
+        ctx.arc(x, H - 6, 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+  }, [data, progress, notes, duration]);
+
+  return (
+    <canvas ref={ref} style={{ display:'block', width:'100%', height:80, cursor:'pointer' }}
+      onClick={e => {
+        if (!onSeek) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        onSeek((e.clientX - rect.left) / rect.width);
+      }} />
+  );
 }
 
 export default function Player() {
@@ -24,7 +91,6 @@ export default function Player() {
   const [duration, setDuration] = useState(0);
   const [pinnedTime, setPinnedTime] = useState(0);
   const audioRef = useRef(null);
-  const waveRef = useRef(null);
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
@@ -49,11 +115,11 @@ export default function Player() {
     setTracks(trackList);
     if (trackList.length > 0) {
       setActiveTrack(trackList[0]);
-      loadNotes(trackList[0].id);
+      loadNotes(trackList[0].id, pid);
     }
   }
 
-  async function loadNotes(trackId) {
+  async function loadNotes(trackId, pid) {
     const { data } = await sb.from('notes')
       .select('*').eq('track_id', trackId)
       .order('timestamp_sec');
@@ -77,9 +143,13 @@ export default function Player() {
 
   function getAudioUrl() {
     if (!activeTrack) return null;
-    // Use mp3_url for mobile compatibility, fall back to audio_url
     const rev = activeTrack.revisions?.find(r => r.is_active);
     return rev?.mp3_url || rev?.audio_url || activeTrack.mp3_url || activeTrack.audio_url;
+  }
+
+  function handleSeek(pct) {
+    if (!audioRef.current || !duration) return;
+    audioRef.current.currentTime = pct * duration;
   }
 
   async function postNote() {
@@ -97,6 +167,8 @@ export default function Player() {
   }
 
   const audioUrl = getAudioUrl();
+  const progress = duration ? currentTime / duration : 0;
+  const activePeaks = activeTrack?.peaks;
 
   return (
     <>
@@ -105,63 +177,67 @@ export default function Player() {
         :root{
           --bg:#0a0a0b;--surf:#111113;--surf2:#16161a;--surf3:#1e1e24;
           --border:#24242c;--border2:#2e2e38;
-          --amber:#e8a020;--aglow:rgba(232,160,32,0.08);
+          --amber:#e8a020;--aglow:rgba(232,160,32,0.08);--aglow2:rgba(232,160,32,0.15);
           --text:#f0ede8;--t2:#8a8780;--t3:#4a4945;
           --fh:'DM Serif Display',Georgia,serif;
           --fm:'DM Mono','SF Mono','Menlo',monospace;
         }
         html,body{background:var(--bg);color:var(--text);font-family:var(--fm);height:100%;overflow:hidden;}
-        .topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--surf);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;}
+        .topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--surf);border-bottom:1px solid var(--border);}
         .logo{font-family:var(--fh);font-size:18px;color:var(--text);text-decoration:none;}
         .logo em{color:var(--amber);font-style:normal;}
-        .back{font-size:11px;color:var(--t2);text-decoration:none;display:flex;align-items:center;gap:6px;}
+        .breadcrumb{font-size:13px;color:var(--t2);font-style:italic;margin-left:8px;}
+        .back{font-size:11px;color:var(--t2);text-decoration:none;letter-spacing:.04em;transition:color .15s;}
         .back:hover{color:var(--text);}
         .layout{display:flex;height:calc(100vh - 52px);}
         .left{flex:1;overflow-y:auto;padding:28px 32px;border-right:1px solid var(--border);}
-        .right{width:340px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;}
-        .proj-title{font-family:var(--fh);font-size:26px;letter-spacing:-.02em;margin-bottom:4px;}
-        .proj-artist{font-size:12px;color:var(--t2);margin-bottom:24px;}
+        .right{width:340px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surf);}
+        .proj-title{font-family:var(--fh);font-size:28px;letter-spacing:-.02em;margin-bottom:4px;}
+        .proj-artist{font-size:12px;color:var(--t2);margin-bottom:24px;letter-spacing:.04em;}
         .track-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;}
-        .track-tab{padding:6px 14px;font-family:var(--fm);font-size:11px;cursor:pointer;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);transition:all .15s;}
+        .track-tab{padding:6px 14px;font-family:var(--fm);font-size:11px;cursor:pointer;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);transition:all .15s;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .track-tab:hover{color:var(--text);border-color:var(--t2);}
         .track-tab.active{background:var(--aglow);border-color:var(--amber);color:var(--amber);}
-        .player-box{background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;}
-        .waveform-bar{height:64px;background:var(--surf2);border-radius:8px;margin-bottom:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;position:relative;}
-        .progress-fill{position:absolute;left:0;top:0;height:100%;background:rgba(232,160,32,.15);pointer-events:none;transition:width .1s linear;}
-        .waveform-label{font-size:11px;color:var(--t3);}
+        .player-box{background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:20px 20px 16px;margin-bottom:20px;}
+        .waveform-wrap{margin-bottom:16px;background:var(--surf2);border-radius:8px;padding:12px 12px 8px;overflow:hidden;}
         .transport{display:flex;align-items:center;gap:16px;}
-        .play-btn{width:40px;height:40px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s;}
+        .play-btn{width:40px;height:40px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s,transform .1s;}
         .play-btn:hover{opacity:.85;}
+        .play-btn:active{transform:scale(.95);}
         .time{font-size:13px;color:var(--t2);}
-        .time span{color:var(--text);}
+        .time-cur{color:var(--text);}
         .note-bar{background:var(--surf);border:1px solid var(--border2);border-radius:12px;padding:16px;}
         .note-bar-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:11px;color:var(--t2);}
-        .ts-badge{padding:3px 10px;background:var(--aglow);border:1px solid rgba(232,160,32,.2);border-radius:6px;font-size:11px;color:var(--amber);}
-        textarea{width:100%;background:var(--bg);border:1.5px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--fm);font-size:12px;resize:none;outline:none;min-height:64px;}
+        .ts-badge{padding:3px 10px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);border-radius:6px;font-size:11px;color:var(--amber);font-weight:500;}
+        textarea{width:100%;background:var(--bg);border:1.5px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--fm);font-size:12px;resize:none;outline:none;min-height:64px;transition:border-color .15s;}
         textarea:focus{border-color:var(--amber);}
-        .note-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px;}
-        .btn-ghost{font-family:var(--fm);font-size:11px;padding:7px 14px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;}
-        .btn-amber{font-family:var(--fm);font-size:11px;font-weight:500;padding:7px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;}
-        .panel-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--surf);}
-        .panel-tab{flex:1;padding:14px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);cursor:pointer;text-align:center;border:none;background:transparent;font-family:var(--fm);border-bottom:2px solid transparent;transition:all .15s;}
-        .panel-tab.active{color:var(--amber);border-bottom-color:var(--amber);background:var(--aglow);}
-        .panel-body{flex:1;overflow-y:auto;padding:16px;}
-        .note-item{padding:12px 0;border-bottom:1px solid var(--border);}
+        .note-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px;}
+        .btn-ghost{font-family:var(--fm);font-size:11px;padding:7px 14px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;transition:all .15s;}
+        .btn-ghost:hover{color:var(--text);border-color:var(--t2);}
+        .btn-amber{font-family:var(--fm);font-size:11px;font-weight:500;padding:7px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;transition:opacity .15s;}
+        .btn-amber:hover{opacity:.88;}
+        .btn-amber:disabled{opacity:.35;pointer-events:none;}
+        .panel-header{padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surf);}
+        .panel-title{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);font-weight:500;}
+        .panel-body{flex:1;overflow-y:auto;padding:0;}
+        .note-item{padding:14px 16px;border-bottom:1px solid var(--border);transition:background .15s;}
+        .note-item:hover{background:var(--surf2);}
         .note-item:last-child{border-bottom:none;}
         .note-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
-        .note-author{font-size:11px;color:var(--text);}
-        .note-ts{font-size:10px;padding:2px 7px;background:var(--aglow);color:var(--amber);border-radius:4px;cursor:pointer;}
-        .note-ts:hover{background:rgba(232,160,32,.2);}
+        .note-author{font-size:11px;color:var(--text);font-weight:500;}
+        .note-ts{font-size:10px;padding:2px 8px;background:var(--aglow);border:1px solid rgba(232,160,32,.2);color:var(--amber);border-radius:4px;cursor:pointer;transition:background .15s;}
+        .note-ts:hover{background:var(--aglow2);}
         .note-date{font-size:10px;color:var(--t3);margin-left:auto;}
-        .note-body{font-size:12px;color:#ccc;line-height:1.6;}
-        .empty-notes{text-align:center;padding:40px 0;color:var(--t3);font-size:11px;}
+        .note-body{font-size:12px;color:var(--t2);line-height:1.6;}
+        .empty-notes{text-align:center;padding:48px 16px;color:var(--t3);}
+        .empty-notes-icon{font-size:28px;margin-bottom:10px;opacity:.4;}
       `}</style>
 
       <div className="topbar">
-        <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <a href="/" className="logo">maastr<em>.</em></a>
-          <span style={{ color:'var(--border2)' }}>/</span>
-          <span style={{ fontSize:13, color:'var(--t2)', fontStyle:'italic' }}>{project?.title || 'Loading…'}</span>
+          <span style={{ color:'var(--border2)', fontSize:16 }}>/</span>
+          <span className="breadcrumb">{project?.title || 'Loading…'}</span>
         </div>
         <a href="/" className="back">← Dashboard</a>
       </div>
@@ -175,20 +251,20 @@ export default function Player() {
             <div className="track-tabs">
               {tracks.map(t => (
                 <button key={t.id} className={`track-tab ${activeTrack?.id===t.id?'active':''}`}
-                  onClick={() => selectTrack(t)}>{t.title}</button>
+                  title={t.title} onClick={() => selectTrack(t)}>{t.title}</button>
               ))}
             </div>
           )}
 
           <div className="player-box">
-            <div className="waveform-bar" onClick={e => {
-              if (!audioRef.current || !duration) return;
-              const rect = e.currentTarget.getBoundingClientRect();
-              const pct = (e.clientX - rect.left) / rect.width;
-              audioRef.current.currentTime = pct * duration;
-            }}>
-              <div className="progress-fill" style={{ width: duration ? (currentTime/duration*100)+'%' : '0%' }} />
-              <span className="waveform-label">{audioUrl ? (playing ? '▶ Playing' : 'Click to seek') : 'No audio'}</span>
+            <div className="waveform-wrap">
+              <Waveform
+                peaks={activePeaks}
+                progress={progress}
+                notes={notes}
+                duration={duration}
+                onSeek={handleSeek}
+              />
             </div>
             <div className="transport">
               <button className="play-btn" onClick={togglePlay} disabled={!audioUrl}>
@@ -199,7 +275,10 @@ export default function Player() {
                   }
                 </svg>
               </button>
-              <div className="time"><span>{fmt(currentTime)}</span> / {fmt(duration)}</div>
+              <div className="time">
+                <span className="time-cur">{fmt(currentTime)}</span>
+                {' / ' + fmt(duration)}
+              </div>
             </div>
           </div>
 
@@ -209,6 +288,7 @@ export default function Player() {
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
               Note at <span className="ts-badge">{fmt(pinnedTime)}</span>
+              <span style={{ fontSize:10, color:'var(--t3)' }}>(updates while playing)</span>
             </div>
             <textarea value={noteText} onChange={e => setNoteText(e.target.value)}
               placeholder="Add a timestamped note…" />
@@ -220,22 +300,25 @@ export default function Player() {
         </div>
 
         <div className="right">
-          <div className="panel-tabs">
-            <button className="panel-tab active">Notes ({notes.length})</button>
+          <div className="panel-header">
+            <div className="panel-title">Notes ({notes.length})</div>
           </div>
           <div className="panel-body">
             {notes.length === 0 ? (
               <div className="empty-notes">
-                <div style={{ fontSize:24, marginBottom:8 }}>♪</div>
-                No notes yet. Hit play and leave feedback.
+                <div className="empty-notes-icon">♪</div>
+                No notes yet.<br />Hit play and leave feedback.
               </div>
-            ) : notes.map((n, i) => (
-              <div key={n.id} className="note-item" style={{ animationDelay: i*40+'ms' }}>
+            ) : notes.map(n => (
+              <div key={n.id} className="note-item">
                 <div className="note-header">
                   <span className="note-author">{n.author_name || 'Anonymous'}</span>
                   {n.timestamp_sec != null && (
                     <span className="note-ts" onClick={() => {
-                      if (audioRef.current) audioRef.current.currentTime = n.timestamp_sec;
+                      if (audioRef.current) {
+                        audioRef.current.currentTime = n.timestamp_sec;
+                        setPinnedTime(n.timestamp_sec);
+                      }
                     }}>{n.timestamp_label || fmt(n.timestamp_sec)}</span>
                   )}
                   <span className="note-date">{new Date(n.created_at).toLocaleDateString()}</span>
