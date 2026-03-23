@@ -7,69 +7,131 @@ function fmt(s) {
   return Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
 }
 
-function fallbackPeaks() {
-  const p = []; let s = Date.now() & 0xFFFFFF;
-  for (let i = 0; i < 100; i++) {
+function fallbackPeaks(n = 200) {
+  const p = []; let s = 0xDEADBEEF;
+  for (let i = 0; i < n; i++) {
     s ^= s << 13; s ^= s >> 17; s ^= s << 5;
-    p.push(Math.max(0.04, Math.min(0.96, (0.3 + Math.sin(i/100 * Math.PI) * 0.4) * (0.5 + (s>>>0)/0xFFFFFFFF * 0.5))));
+    const t = i / n;
+    const envelope = Math.sin(t * Math.PI) * 0.7 + 0.3;
+    p.push(Math.max(0.04, Math.min(0.96, envelope * (0.4 + (s >>> 0) / 0xFFFFFFFF * 0.6))));
   }
   return p;
 }
 
+// Waveform: static canvas + CSS playhead overlay
 function Waveform({ peaks, progress, notes, duration, onSeek }) {
-  const ref = useRef(null);
+  const canvasRef = useRef(null);
+  const wrapRef = useRef(null);
   const data = (peaks && peaks.length > 4) ? peaks : fallbackPeaks();
 
+  // Draw static waveform bars — only redraws when peaks or notes change
   useEffect(() => {
-    const canvas = ref.current;
+    const canvas = canvasRef.current;
     if (!canvas) return;
-    const W = canvas.offsetWidth || 600, H = 80;
+    const wrap = wrapRef.current;
+    const W = wrap ? wrap.offsetWidth : 800;
+    const H = 96;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, W, H);
-    const cy = H / 2, BAR = 2, GAP = 1, STEP = BAR + GAP;
+
+    const cy = H / 2;
+    const BAR = 2, GAP = 1, STEP = BAR + GAP;
     const numBars = Math.floor(W / STEP);
-    const cutoff = Math.floor(numBars * (progress || 0));
+
+    // Draw all bars in muted grey
     for (let i = 0; i < numBars; i++) {
       const pi = Math.floor((i / numBars) * data.length);
       const amp = data[Math.min(pi, data.length - 1)];
-      const h = Math.max(2, amp * (cy - 4));
-      const played = i < cutoff;
+      const h = Math.max(2, amp * (cy - 6));
+      const x = i * STEP;
       const g = ctx.createLinearGradient(0, cy - h, 0, cy + h);
-      if (played) {
-        g.addColorStop(0, 'rgba(232,160,32,.9)');
-        g.addColorStop(.5, 'rgba(232,160,32,.55)');
-        g.addColorStop(1, 'rgba(232,160,32,.12)');
-      } else {
-        g.addColorStop(0, 'rgba(255,255,255,.18)');
-        g.addColorStop(.5, 'rgba(255,255,255,.09)');
-        g.addColorStop(1, 'rgba(255,255,255,.02)');
-      }
+      g.addColorStop(0, 'rgba(255,255,255,0.22)');
+      g.addColorStop(0.5, 'rgba(255,255,255,0.10)');
+      g.addColorStop(1, 'rgba(255,255,255,0.03)');
       ctx.fillStyle = g;
-      ctx.fillRect(i * STEP, cy - h, BAR, h * 2);
+      ctx.fillRect(x, cy - h, BAR, h * 2);
     }
-    if (notes && duration) {
+
+    // Draw note dot markers at correct time positions
+    if (notes && duration > 0) {
       notes.forEach(n => {
-        if (n.timestamp_sec == null) return;
+        if (n.timestamp_sec == null || n.timestamp_sec > duration) return;
         const x = (n.timestamp_sec / duration) * W;
-        ctx.fillStyle = 'rgba(232,160,32,0.9)';
+        // Stem line
+        ctx.strokeStyle = 'rgba(232,160,32,0.5)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]);
         ctx.beginPath();
-        ctx.arc(x, H - 6, 3, 0, Math.PI * 2);
+        ctx.moveTo(x, 8);
+        ctx.lineTo(x, H - 8);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Dot at bottom
+        ctx.fillStyle = '#e8a020';
+        ctx.beginPath();
+        ctx.arc(x, H - 6, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        // Dot at top
+        ctx.beginPath();
+        ctx.arc(x, 6, 3.5, 0, Math.PI * 2);
         ctx.fill();
       });
     }
-  }, [data, progress, notes, duration]);
+  }, [data, notes, duration]);
+
+  const progressPct = Math.max(0, Math.min(1, progress || 0)) * 100;
+
+  function handleClick(e) {
+    if (!onSeek) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    onSeek(Math.max(0, Math.min(1, pct)));
+  }
 
   return (
-    <canvas ref={ref} style={{ display:'block', width:'100%', height:80, cursor:'pointer' }}
-      onClick={e => {
-        if (!onSeek) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        onSeek((e.clientX - rect.left) / rect.width);
+    <div ref={wrapRef} onClick={handleClick}
+      style={{ position:'relative', width:'100%', height:96, cursor:'crosshair', userSelect:'none' }}>
+      {/* Static waveform canvas */}
+      <canvas ref={canvasRef}
+        style={{ position:'absolute', inset:0, display:'block', width:'100%', height:'100%' }} />
+
+      {/* Played-portion amber overlay — clip reveals amber bars over grey */}
+      <div style={{
+        position:'absolute', inset:0,
+        background:'linear-gradient(to bottom, rgba(232,160,32,0.55) 0%, rgba(232,160,32,0.25) 50%, rgba(232,160,32,0.06) 100%)',
+        clipPath:`inset(0 ${100 - progressPct}% 0 0)`,
+        pointerEvents:'none',
+        mixBlendMode:'screen',
+        transition:'clip-path 0.05s linear',
       }} />
+
+      {/* Playhead vertical line */}
+      <div style={{
+        position:'absolute', top:0, bottom:0,
+        left:`${progressPct}%`,
+        width:2,
+        background:'#e8a020',
+        boxShadow:'0 0 8px rgba(232,160,32,0.8)',
+        pointerEvents:'none',
+        transform:'translateX(-1px)',
+        transition:'left 0.05s linear',
+        zIndex:10,
+      }}>
+        {/* Playhead handle at top */}
+        <div style={{
+          position:'absolute', top:-1, left:'50%', transform:'translateX(-50%)',
+          width:10, height:10, borderRadius:'50%',
+          background:'#e8a020',
+          boxShadow:'0 0 6px rgba(232,160,32,0.9)',
+        }} />
+      </div>
+    </div>
   );
 }
 
@@ -153,6 +215,14 @@ export default function Player() {
     return null;
   }
 
+  function handleSeek(pct) {
+    if (!audioRef.current || !duration) return;
+    const t = pct * duration;
+    audioRef.current.currentTime = t;
+    setCurrentTime(t);
+    setPinnedTime(t);
+  }
+
   async function postNote() {
     if (!noteText.trim() || !activeTrack) return;
     await sb.from('notes').insert({
@@ -201,14 +271,16 @@ export default function Player() {
         .tab-btn:hover{color:var(--text);border-color:var(--t2);}
         .tab-btn.active{background:var(--aglow);border-color:var(--amber);color:var(--amber);}
         .player-box{background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:20px 20px 16px;margin-bottom:20px;}
-        .waveform-wrap{margin-bottom:16px;background:var(--surf2);border-radius:8px;padding:12px 12px 8px;overflow:hidden;}
+        .waveform-wrap{margin-bottom:16px;background:var(--surf2);border-radius:8px;padding:16px 16px 12px;overflow:hidden;}
+        .time-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:0 2px;}
+        .time-label{font-size:11px;color:var(--t3);}
         .transport{display:flex;align-items:center;gap:16px;}
-        .play-btn{width:40px;height:40px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s,transform .1s;}
+        .play-btn{width:44px;height:44px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s,transform .1s;}
         .play-btn:hover{opacity:.85;}
-        .play-btn:active{transform:scale(.95);}
-        .play-btn:disabled{opacity:.35;pointer-events:none;}
-        .time{font-size:13px;color:var(--t2);}
-        .time-cur{color:var(--text);}
+        .play-btn:active{transform:scale(.94);}
+        .play-btn:disabled{opacity:.3;pointer-events:none;}
+        .time-display{font-size:14px;color:var(--t2);}
+        .time-cur{color:var(--text);font-weight:500;}
         .note-bar{background:var(--surf);border:1px solid var(--border2);border-radius:12px;padding:16px;}
         .note-bar-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:11px;color:var(--t2);}
         .ts-badge{padding:3px 10px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);border-radius:6px;font-size:11px;color:var(--amber);font-weight:500;}
@@ -223,7 +295,7 @@ export default function Player() {
         .panel-header{padding:14px 16px;border-bottom:1px solid var(--border);}
         .panel-title{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);font-weight:500;}
         .panel-body{flex:1;overflow-y:auto;}
-        .note-item{padding:14px 16px;border-bottom:1px solid var(--border);transition:background .15s;}
+        .note-item{padding:14px 16px;border-bottom:1px solid var(--border);transition:background .15s;cursor:default;}
         .note-item:hover{background:var(--surf2);}
         .note-item:last-child{border-bottom:none;}
         .note-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
@@ -233,7 +305,7 @@ export default function Player() {
         .note-date{font-size:10px;color:var(--t3);margin-left:auto;}
         .note-body{font-size:12px;color:var(--t2);line-height:1.6;}
         .empty-notes{text-align:center;padding:48px 16px;color:var(--t3);font-size:11px;line-height:1.8;}
-        .rev-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;padding:2px 7px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.2);color:var(--amber);letter-spacing:.06em;text-transform:uppercase;}
+        .rev-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.2);color:var(--amber);letter-spacing:.06em;text-transform:uppercase;margin-left:auto;}
       `}</style>
 
       <div className="topbar">
@@ -251,7 +323,7 @@ export default function Player() {
           <div className="proj-artist">{project?.artist}</div>
 
           {tracks.length > 1 && (
-            <div className="tabs-row" style={{ marginBottom: 16 }}>
+            <div className="tabs-row" style={{ marginBottom:16 }}>
               <span className="tabs-label">Track</span>
               {tracks.map(t => (
                 <button key={t.id} className={`tab-btn ${activeTrack?.id===t.id?'active':''}`}
@@ -261,13 +333,13 @@ export default function Player() {
           )}
 
           {revisions.length > 1 && (
-            <div className="tabs-row" style={{ marginBottom: 20 }}>
+            <div className="tabs-row" style={{ marginBottom:20 }}>
               <span className="tabs-label">Version</span>
               {revisions.map((rev, i) => (
                 <button key={rev.id} className={`tab-btn ${activeRevision?.id===rev.id?'active':''}`}
                   onClick={() => selectRevision(rev)}>
                   {rev.label || `v${rev.version_number || i+1}`}
-                  {rev.is_active && <span style={{ marginLeft:4, fontSize:8, color:'var(--amber)' }}>●</span>}
+                  {rev.is_active && <span style={{ marginLeft:4, fontSize:8 }}>●</span>}
                 </button>
               ))}
             </div>
@@ -280,26 +352,33 @@ export default function Player() {
                 progress={progress}
                 notes={notes}
                 duration={duration}
-                onSeek={pct => {
-                  if (audioRef.current && duration) audioRef.current.currentTime = pct * duration;
-                }}
+                onSeek={handleSeek}
               />
+              {/* Time labels below waveform */}
+              <div className="time-row">
+                <span className="time-label">{fmt(currentTime)}</span>
+                <span className="time-label" style={{ color:'var(--t3)', fontSize:10 }}>
+                  {duration > 0 && notes.length > 0 ? notes.length + ' note' + (notes.length !== 1 ? 's' : '') : ''}
+                </span>
+                <span className="time-label">{fmt(duration)}</span>
+              </div>
             </div>
+
             <div className="transport">
               <button className="play-btn" onClick={togglePlay} disabled={!audioUrl}>
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="#000">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="#000">
                   {playing
-                    ? <><rect x="3" y="1" width="3" height="12"/><rect x="8" y="1" width="3" height="12"/></>
-                    : <polygon points="3,1 13,7 3,13"/>
+                    ? <><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>
+                    : <polygon points="3,1 15,8 3,15"/>
                   }
                 </svg>
               </button>
-              <div className="time">
+              <div className="time-display">
                 <span className="time-cur">{fmt(currentTime)}</span>
-                {' / ' + fmt(duration)}
+                <span> / {fmt(duration)}</span>
               </div>
               {activeRevision && (
-                <span className="rev-badge" style={{ marginLeft:'auto' }}>
+                <span className="rev-badge">
                   {activeRevision.label || `v${activeRevision.version_number || 1}`}
                 </span>
               )}
@@ -339,8 +418,9 @@ export default function Player() {
                   <span className="note-author">{n.author_name || 'Anonymous'}</span>
                   {n.timestamp_sec != null && (
                     <span className="note-ts" onClick={() => {
-                      if (audioRef.current) {
+                      if (audioRef.current && duration) {
                         audioRef.current.currentTime = n.timestamp_sec;
+                        setCurrentTime(n.timestamp_sec);
                         setPinnedTime(n.timestamp_sec);
                       }
                     }}>{n.timestamp_label || fmt(n.timestamp_sec)}</span>
@@ -356,7 +436,10 @@ export default function Player() {
 
       {audioUrl && (
         <audio ref={audioRef} src={audioUrl} preload="metadata"
-          onTimeUpdate={e => { setCurrentTime(e.target.currentTime); setPinnedTime(e.target.currentTime); }}
+          onTimeUpdate={e => {
+            setCurrentTime(e.target.currentTime);
+            setPinnedTime(e.target.currentTime);
+          }}
           onDurationChange={e => setDuration(e.target.duration)}
           onEnded={() => setPlaying(false)}
         />
