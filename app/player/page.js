@@ -1,11 +1,6 @@
 'use client';
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const sb = createClient(
-  'https://btgednpwlkimgjwcopru.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0Z2VkbnB3bGtpbWdqd2NvcHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMDkwNzEsImV4cCI6MjA4OTc4NTA3MX0.6rVWXxzZRDkHrJhKm5MW45QZOvNJOv56kSKZG6MpBD0'
-);
+import { useEffect, useState, useRef } from 'react';
+import { sb } from '@/lib/supabase';
 
 function fmt(s) {
   if (!s || isNaN(s)) return '0:00';
@@ -56,7 +51,6 @@ function Waveform({ peaks, progress, notes, duration, onSeek }) {
       ctx.fillStyle = g;
       ctx.fillRect(i * STEP, cy - h, BAR, h * 2);
     }
-    // Note markers
     if (notes && duration) {
       notes.forEach(n => {
         if (n.timestamp_sec == null) return;
@@ -84,6 +78,7 @@ export default function Player() {
   const [project, setProject] = useState(null);
   const [tracks, setTracks] = useState([]);
   const [activeTrack, setActiveTrack] = useState(null);
+  const [activeRevision, setActiveRevision] = useState(null);
   const [notes, setNotes] = useState([]);
   const [noteText, setNoteText] = useState('');
   const [playing, setPlaying] = useState(false);
@@ -114,12 +109,15 @@ export default function Player() {
     const trackList = tr || [];
     setTracks(trackList);
     if (trackList.length > 0) {
-      setActiveTrack(trackList[0]);
-      loadNotes(trackList[0].id, pid);
+      const first = trackList[0];
+      setActiveTrack(first);
+      const activeRev = first.revisions?.find(r => r.is_active) || first.revisions?.[first.revisions.length - 1] || null;
+      setActiveRevision(activeRev);
+      loadNotes(first.id);
     }
   }
 
-  async function loadNotes(trackId, pid) {
+  async function loadNotes(trackId) {
     const { data } = await sb.from('notes')
       .select('*').eq('track_id', trackId)
       .order('timestamp_sec');
@@ -129,10 +127,18 @@ export default function Player() {
   function selectTrack(t) {
     setActiveTrack(t);
     setPlaying(false);
-    setCurrentTime(0);
-    setPinnedTime(0);
+    setCurrentTime(0); setPinnedTime(0);
     if (audioRef.current) audioRef.current.pause();
+    const activeRev = t.revisions?.find(r => r.is_active) || t.revisions?.[t.revisions.length - 1] || null;
+    setActiveRevision(activeRev);
     loadNotes(t.id);
+  }
+
+  function selectRevision(rev) {
+    setActiveRevision(rev);
+    setPlaying(false);
+    setCurrentTime(0); setPinnedTime(0);
+    if (audioRef.current) audioRef.current.pause();
   }
 
   function togglePlay() {
@@ -142,14 +148,9 @@ export default function Player() {
   }
 
   function getAudioUrl() {
-    if (!activeTrack) return null;
-    const rev = activeTrack.revisions?.find(r => r.is_active);
-    return rev?.mp3_url || rev?.audio_url || activeTrack.mp3_url || activeTrack.audio_url;
-  }
-
-  function handleSeek(pct) {
-    if (!audioRef.current || !duration) return;
-    audioRef.current.currentTime = pct * duration;
+    if (activeRevision) return activeRevision.mp3_url || activeRevision.audio_url;
+    if (activeTrack) return activeTrack.mp3_url || activeTrack.audio_url;
+    return null;
   }
 
   async function postNote() {
@@ -168,7 +169,7 @@ export default function Player() {
 
   const audioUrl = getAudioUrl();
   const progress = duration ? currentTime / duration : 0;
-  const activePeaks = activeTrack?.peaks;
+  const revisions = activeTrack?.revisions || [];
 
   return (
     <>
@@ -194,16 +195,18 @@ export default function Player() {
         .right{width:340px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surf);}
         .proj-title{font-family:var(--fh);font-size:28px;letter-spacing:-.02em;margin-bottom:4px;}
         .proj-artist{font-size:12px;color:var(--t2);margin-bottom:24px;letter-spacing:.04em;}
-        .track-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap;}
-        .track-tab{padding:6px 14px;font-family:var(--fm);font-size:11px;cursor:pointer;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);transition:all .15s;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .track-tab:hover{color:var(--text);border-color:var(--t2);}
-        .track-tab.active{background:var(--aglow);border-color:var(--amber);color:var(--amber);}
+        .tabs-row{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center;}
+        .tabs-label{font-size:10px;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-right:4px;}
+        .tab-btn{padding:5px 12px;font-family:var(--fm);font-size:11px;cursor:pointer;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);transition:all .15s;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .tab-btn:hover{color:var(--text);border-color:var(--t2);}
+        .tab-btn.active{background:var(--aglow);border-color:var(--amber);color:var(--amber);}
         .player-box{background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:20px 20px 16px;margin-bottom:20px;}
         .waveform-wrap{margin-bottom:16px;background:var(--surf2);border-radius:8px;padding:12px 12px 8px;overflow:hidden;}
         .transport{display:flex;align-items:center;gap:16px;}
         .play-btn{width:40px;height:40px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s,transform .1s;}
         .play-btn:hover{opacity:.85;}
         .play-btn:active{transform:scale(.95);}
+        .play-btn:disabled{opacity:.35;pointer-events:none;}
         .time{font-size:13px;color:var(--t2);}
         .time-cur{color:var(--text);}
         .note-bar{background:var(--surf);border:1px solid var(--border2);border-radius:12px;padding:16px;}
@@ -217,9 +220,9 @@ export default function Player() {
         .btn-amber{font-family:var(--fm);font-size:11px;font-weight:500;padding:7px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;transition:opacity .15s;}
         .btn-amber:hover{opacity:.88;}
         .btn-amber:disabled{opacity:.35;pointer-events:none;}
-        .panel-header{padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surf);}
+        .panel-header{padding:14px 16px;border-bottom:1px solid var(--border);}
         .panel-title{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);font-weight:500;}
-        .panel-body{flex:1;overflow-y:auto;padding:0;}
+        .panel-body{flex:1;overflow-y:auto;}
         .note-item{padding:14px 16px;border-bottom:1px solid var(--border);transition:background .15s;}
         .note-item:hover{background:var(--surf2);}
         .note-item:last-child{border-bottom:none;}
@@ -229,8 +232,8 @@ export default function Player() {
         .note-ts:hover{background:var(--aglow2);}
         .note-date{font-size:10px;color:var(--t3);margin-left:auto;}
         .note-body{font-size:12px;color:var(--t2);line-height:1.6;}
-        .empty-notes{text-align:center;padding:48px 16px;color:var(--t3);}
-        .empty-notes-icon{font-size:28px;margin-bottom:10px;opacity:.4;}
+        .empty-notes{text-align:center;padding:48px 16px;color:var(--t3);font-size:11px;line-height:1.8;}
+        .rev-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;padding:2px 7px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.2);color:var(--amber);letter-spacing:.06em;text-transform:uppercase;}
       `}</style>
 
       <div className="topbar">
@@ -248,10 +251,24 @@ export default function Player() {
           <div className="proj-artist">{project?.artist}</div>
 
           {tracks.length > 1 && (
-            <div className="track-tabs">
+            <div className="tabs-row" style={{ marginBottom: 16 }}>
+              <span className="tabs-label">Track</span>
               {tracks.map(t => (
-                <button key={t.id} className={`track-tab ${activeTrack?.id===t.id?'active':''}`}
+                <button key={t.id} className={`tab-btn ${activeTrack?.id===t.id?'active':''}`}
                   title={t.title} onClick={() => selectTrack(t)}>{t.title}</button>
+              ))}
+            </div>
+          )}
+
+          {revisions.length > 1 && (
+            <div className="tabs-row" style={{ marginBottom: 20 }}>
+              <span className="tabs-label">Version</span>
+              {revisions.map((rev, i) => (
+                <button key={rev.id} className={`tab-btn ${activeRevision?.id===rev.id?'active':''}`}
+                  onClick={() => selectRevision(rev)}>
+                  {rev.label || `v${rev.version_number || i+1}`}
+                  {rev.is_active && <span style={{ marginLeft:4, fontSize:8, color:'var(--amber)' }}>●</span>}
+                </button>
               ))}
             </div>
           )}
@@ -259,11 +276,13 @@ export default function Player() {
           <div className="player-box">
             <div className="waveform-wrap">
               <Waveform
-                peaks={activePeaks}
+                peaks={activeTrack?.peaks}
                 progress={progress}
                 notes={notes}
                 duration={duration}
-                onSeek={handleSeek}
+                onSeek={pct => {
+                  if (audioRef.current && duration) audioRef.current.currentTime = pct * duration;
+                }}
               />
             </div>
             <div className="transport">
@@ -279,6 +298,11 @@ export default function Player() {
                 <span className="time-cur">{fmt(currentTime)}</span>
                 {' / ' + fmt(duration)}
               </div>
+              {activeRevision && (
+                <span className="rev-badge" style={{ marginLeft:'auto' }}>
+                  {activeRevision.label || `v${activeRevision.version_number || 1}`}
+                </span>
+              )}
             </div>
           </div>
 
@@ -306,7 +330,7 @@ export default function Player() {
           <div className="panel-body">
             {notes.length === 0 ? (
               <div className="empty-notes">
-                <div className="empty-notes-icon">♪</div>
+                <div style={{ fontSize:28, marginBottom:8, opacity:.4 }}>♪</div>
                 No notes yet.<br />Hit play and leave feedback.
               </div>
             ) : notes.map(n => (
