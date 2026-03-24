@@ -7,7 +7,6 @@ function fmt(s) {
   return Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
 }
 
-// Fixed seed — computed once at module level, never changes
 const FALLBACK_PEAKS = (() => {
   const p = []; let s = 0x12345678;
   for (let i = 0; i < 200; i++) {
@@ -24,109 +23,77 @@ function Waveform({ peaks, progress, notes, duration, onSeek }) {
   const progressRef = useRef(progress);
   useEffect(() => { progressRef.current = progress; }, [progress]);
 
-  // Stable peaks ref — only updates when real peaks arrive, never falls back to random
   const stablePeaks = useRef(FALLBACK_PEAKS);
   if (peaks && peaks.length > 4) stablePeaks.current = peaks;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const dpr = window.devicePixelRatio || 1;
     const W = canvas.parentElement?.offsetWidth || 800;
     const H = 96;
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width = W + 'px';
-    canvas.style.height = H + 'px';
-
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
-
     const data = stablePeaks.current;
     const BAR = 2, GAP = 1, STEP = BAR + GAP;
     const numBars = Math.floor(W / STEP);
     const cy = H / 2;
-
-    // Pre-compute heights once
     const heights = new Float32Array(numBars);
     for (let i = 0; i < numBars; i++) {
       const pi = Math.floor(i / numBars * data.length);
       heights[i] = Math.max(2, data[Math.min(pi, data.length - 1)] * (cy - 6));
     }
-
-    // Pre-compute gradients once per setup
-    const greyGrads = [];
-    const amberGrads = [];
-    for (let i = 0; i < numBars; i++) {
-      const h = heights[i];
-      const gg = ctx.createLinearGradient(0, cy - h, 0, cy + h);
-      gg.addColorStop(0,   'rgba(255,255,255,0.20)');
-      gg.addColorStop(0.5, 'rgba(255,255,255,0.09)');
-      gg.addColorStop(1,   'rgba(255,255,255,0.02)');
-      greyGrads.push(gg);
-
-      const ag = ctx.createLinearGradient(0, cy - h, 0, cy + h);
-      ag.addColorStop(0,   'rgba(232,160,32,0.92)');
-      ag.addColorStop(0.5, 'rgba(232,160,32,0.50)');
-      ag.addColorStop(1,   'rgba(232,160,32,0.10)');
-      amberGrads.push(ag);
+    // Note markers on offscreen canvas — only redraws when notes/duration change
+    const nc = document.createElement('canvas');
+    nc.width = W * dpr; nc.height = H * dpr;
+    const nctx = nc.getContext('2d');
+    nctx.scale(dpr, dpr);
+    if (notes && notes.length && duration > 0) {
+      notes.forEach(n => {
+        if (n.timestamp_sec == null || n.timestamp_sec > duration) return;
+        const x = (n.timestamp_sec / duration) * W;
+        nctx.save();
+        nctx.strokeStyle = 'rgba(232,160,32,0.55)';
+        nctx.lineWidth = 1; nctx.setLineDash([2,3]);
+        nctx.beginPath(); nctx.moveTo(x,4); nctx.lineTo(x,H-4); nctx.stroke();
+        nctx.restore();
+        nctx.fillStyle = '#e8a020';
+        nctx.beginPath(); nctx.arc(x,5,3.5,0,Math.PI*2); nctx.fill();
+        nctx.beginPath(); nctx.arc(x,H-5,3.5,0,Math.PI*2); nctx.fill();
+      });
     }
-
-    let lastCutBar = -1;
-
+    let lastPlayX = -999;
     function draw() {
       const prog = Math.max(0, Math.min(1, progressRef.current || 0));
-      const cutBar = Math.floor(prog * numBars);
       const playX = prog * W;
-
-      // Only redraw if the cut position actually changed
-      if (cutBar !== lastCutBar) {
-        lastCutBar = cutBar;
+      if (Math.abs(playX - lastPlayX) >= 0.5) {
+        lastPlayX = playX;
+        const cutBar = Math.floor(prog * numBars);
         ctx.clearRect(0, 0, W, H);
-
-        // Waveform bars
         for (let i = 0; i < numBars; i++) {
-          ctx.fillStyle = i < cutBar ? amberGrads[i] : greyGrads[i];
-          ctx.fillRect(i * STEP, cy - heights[i], BAR, heights[i] * 2);
+          const h = heights[i];
+          ctx.fillStyle = i < cutBar ? 'rgba(232,160,32,0.88)' : 'rgba(255,255,255,0.16)';
+          ctx.fillRect(i * STEP, cy - h, BAR, h * 2);
         }
-
-        // Note markers — dashed stem + dots top/bottom
-        if (notes && notes.length && duration > 0) {
-          notes.forEach(n => {
-            if (n.timestamp_sec == null || n.timestamp_sec > duration) return;
-            const x = (n.timestamp_sec / duration) * W;
-            ctx.save();
-            ctx.strokeStyle = 'rgba(232,160,32,0.55)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([2, 3]);
-            ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, H - 4); ctx.stroke();
-            ctx.restore();
-            ctx.fillStyle = '#e8a020';
-            ctx.beginPath(); ctx.arc(x, 5, 3.5, 0, Math.PI * 2); ctx.fill();
-            ctx.beginPath(); ctx.arc(x, H - 5, 3.5, 0, Math.PI * 2); ctx.fill();
-          });
-        }
-
-        // Playhead line + glowing handle
-        if (prog > 0.001) {
+        ctx.drawImage(nc, 0, 0, W, H);
+        if (prog > 0.002) {
           const px = Math.round(playX);
-          ctx.save();
-          ctx.shadowColor = 'rgba(232,160,32,0.9)';
-          ctx.shadowBlur = 10;
-          ctx.fillStyle = '#ffe080';
+          ctx.globalAlpha = 0.4;
+          ctx.fillStyle = '#ffcc44';
+          ctx.fillRect(px - 3, 0, 6, H);
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#ffe566';
           ctx.fillRect(px - 1, 0, 2, H);
-          ctx.beginPath(); ctx.arc(px, 0, 5, 0, Math.PI * 2); ctx.fill();
-          ctx.restore();
+          ctx.beginPath(); ctx.arc(px, 2, 5, 0, Math.PI*2); ctx.fill();
         }
       }
-
       rafRef.current = requestAnimationFrame(draw);
     }
-
     draw();
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [notes, duration]); // peaks handled via stable ref — no re-run on seek/progress
+  }, [notes, duration]);
 
   return (
     <div onClick={e => {
@@ -168,10 +135,7 @@ export default function Player() {
     const { data: proj } = await sb.from('projects').select('*').eq('id', pid).single();
     if (!proj) { window.location.href = '/'; return; }
     setProject(proj);
-    const { data: tr } = await sb.from('tracks')
-      .select('*, revisions(*)')
-      .eq('project_id', pid)
-      .order('position');
+    const { data: tr } = await sb.from('tracks').select('*, revisions(*)').eq('project_id', pid).order('position');
     const trackList = tr || [];
     setTracks(trackList);
     if (trackList.length > 0) {
@@ -189,17 +153,14 @@ export default function Player() {
   }
 
   function selectTrack(t) {
-    setActiveTrack(t);
-    setPlaying(false); setCurrentTime(0); setPinnedTime(0);
+    setActiveTrack(t); setPlaying(false); setCurrentTime(0); setPinnedTime(0);
     if (audioRef.current) audioRef.current.pause();
     const rev = t.revisions?.find(r => r.is_active) || t.revisions?.[t.revisions.length-1] || null;
-    setActiveRevision(rev);
-    loadNotes(t.id);
+    setActiveRevision(rev); loadNotes(t.id);
   }
 
   function selectRevision(rev) {
-    setActiveRevision(rev);
-    setPlaying(false); setCurrentTime(0); setPinnedTime(0);
+    setActiveRevision(rev); setPlaying(false); setCurrentTime(0); setPinnedTime(0);
     if (audioRef.current) audioRef.current.pause();
   }
 
@@ -218,23 +179,17 @@ export default function Player() {
   function handleSeek(pct) {
     if (!audioRef.current || !duration) return;
     const t = pct * duration;
-    audioRef.current.currentTime = t;
-    setCurrentTime(t);
-    setPinnedTime(t);
+    audioRef.current.currentTime = t; setCurrentTime(t); setPinnedTime(t);
   }
 
   async function postNote() {
     if (!noteText.trim() || !activeTrack) return;
     await sb.from('notes').insert({
-      track_id: activeTrack.id,
-      project_id: project.id,
+      track_id: activeTrack.id, project_id: project.id,
       author_name: user?.email?.split('@')[0] || 'You',
-      timestamp_sec: pinnedTime,
-      timestamp_label: fmt(pinnedTime),
-      body: noteText.trim()
+      timestamp_sec: pinnedTime, timestamp_label: fmt(pinnedTime), body: noteText.trim()
     });
-    setNoteText('');
-    loadNotes(activeTrack.id);
+    setNoteText(''); loadNotes(activeTrack.id);
   }
 
   const audioUrl = getAudioUrl();
@@ -245,21 +200,12 @@ export default function Player() {
     <>
       <style>{`
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-        :root{
-          --bg:#0a0a0b;--surf:#111113;--surf2:#16161a;
-          --border:#24242c;--border2:#2e2e38;
-          --amber:#e8a020;--aglow:rgba(232,160,32,0.08);--aglow2:rgba(232,160,32,0.15);
-          --text:#f0ede8;--t2:#8a8780;--t3:#4a4945;
-          --fh:'DM Serif Display',Georgia,serif;
-          --fm:'DM Mono','SF Mono','Menlo',monospace;
-        }
+        :root{--bg:#0a0a0b;--surf:#111113;--surf2:#16161a;--border:#24242c;--border2:#2e2e38;--amber:#e8a020;--aglow:rgba(232,160,32,0.08);--aglow2:rgba(232,160,32,0.15);--text:#f0ede8;--t2:#8a8780;--t3:#4a4945;--fh:'DM Serif Display',Georgia,serif;--fm:'DM Mono','SF Mono','Menlo',monospace;}
         html,body{background:var(--bg);color:var(--text);font-family:var(--fm);height:100%;overflow:hidden;}
         .topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--surf);border-bottom:1px solid var(--border);}
-        .logo{font-family:var(--fh);font-size:18px;color:var(--text);text-decoration:none;}
-        .logo em{color:var(--amber);font-style:normal;}
+        .logo{font-family:var(--fh);font-size:18px;color:var(--text);text-decoration:none;} .logo em{color:var(--amber);font-style:normal;}
         .breadcrumb{font-size:13px;color:var(--t2);font-style:italic;margin-left:8px;}
-        .back{font-size:11px;color:var(--t2);text-decoration:none;letter-spacing:.04em;transition:color .15s;}
-        .back:hover{color:var(--text);}
+        .back{font-size:11px;color:var(--t2);text-decoration:none;letter-spacing:.04em;transition:color .15s;} .back:hover{color:var(--text);}
         .layout{display:flex;height:calc(100vh - 52px);}
         .left{flex:1;overflow-y:auto;padding:28px 32px;border-right:1px solid var(--border);}
         .right{width:340px;flex-shrink:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surf);}
@@ -268,19 +214,15 @@ export default function Player() {
         .tabs-row{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center;}
         .tabs-label{font-size:10px;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;margin-right:4px;}
         .tab-btn{padding:5px 12px;font-family:var(--fm);font-size:11px;cursor:pointer;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);transition:all .15s;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .tab-btn:hover{color:var(--text);border-color:var(--t2);}
-        .tab-btn.active{background:var(--aglow);border-color:var(--amber);color:var(--amber);}
+        .tab-btn:hover{color:var(--text);border-color:var(--t2);} .tab-btn.active{background:var(--aglow);border-color:var(--amber);color:var(--amber);}
         .player-box{background:var(--surf);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;}
         .waveform-wrap{background:var(--surf2);border-radius:8px;padding:12px 14px 8px;margin-bottom:14px;}
         .time-row{display:flex;justify-content:space-between;margin-top:8px;}
         .time-label{font-size:10px;color:var(--t3);font-variant-numeric:tabular-nums;}
         .transport{display:flex;align-items:center;gap:14px;}
         .play-btn{width:44px;height:44px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:opacity .15s,transform .1s;}
-        .play-btn:hover{opacity:.85;}
-        .play-btn:active{transform:scale(.94);}
-        .play-btn:disabled{opacity:.3;pointer-events:none;}
-        .time-display{font-size:14px;color:var(--t2);font-variant-numeric:tabular-nums;}
-        .time-cur{color:var(--text);font-weight:500;}
+        .play-btn:hover{opacity:.85;} .play-btn:active{transform:scale(.94);} .play-btn:disabled{opacity:.3;pointer-events:none;}
+        .time-display{font-size:14px;color:var(--t2);font-variant-numeric:tabular-nums;} .time-cur{color:var(--text);font-weight:500;}
         .rev-badge{margin-left:auto;font-size:9px;padding:3px 9px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.2);color:var(--amber);letter-spacing:.06em;text-transform:uppercase;}
         .note-bar{background:var(--surf);border:1px solid var(--border2);border-radius:12px;padding:16px;}
         .note-bar-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:11px;color:var(--t2);}
@@ -291,14 +233,12 @@ export default function Player() {
         .btn-ghost{font-family:var(--fm);font-size:11px;padding:7px 14px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;transition:all .15s;}
         .btn-ghost:hover{color:var(--text);border-color:var(--t2);}
         .btn-amber{font-family:var(--fm);font-size:11px;font-weight:500;padding:7px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;transition:opacity .15s;}
-        .btn-amber:hover{opacity:.88;}
-        .btn-amber:disabled{opacity:.35;pointer-events:none;}
+        .btn-amber:hover{opacity:.88;} .btn-amber:disabled{opacity:.35;pointer-events:none;}
         .panel-header{padding:14px 16px;border-bottom:1px solid var(--border);}
         .panel-title{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);font-weight:500;}
         .panel-body{flex:1;overflow-y:auto;}
         .note-item{padding:14px 16px;border-bottom:1px solid var(--border);transition:background .15s;}
-        .note-item:hover{background:var(--surf2);}
-        .note-item:last-child{border-bottom:none;}
+        .note-item:hover{background:var(--surf2);} .note-item:last-child{border-bottom:none;}
         .note-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
         .note-author{font-size:11px;color:var(--text);font-weight:500;}
         .note-ts{font-size:10px;padding:2px 8px;background:var(--aglow);border:1px solid rgba(232,160,32,.2);color:var(--amber);border-radius:4px;cursor:pointer;transition:background .15s;}
@@ -307,7 +247,6 @@ export default function Player() {
         .note-body{font-size:12px;color:var(--t2);line-height:1.6;}
         .empty-notes{text-align:center;padding:48px 16px;color:var(--t3);font-size:11px;line-height:1.8;}
       `}</style>
-
       <div className="topbar">
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <a href="/" className="logo">maastr<em>.</em></a>
@@ -316,12 +255,10 @@ export default function Player() {
         </div>
         <a href="/" className="back">← Dashboard</a>
       </div>
-
       <div className="layout">
         <div className="left">
           <div className="proj-title">{project?.title}</div>
           <div className="proj-artist">{project?.artist}</div>
-
           {tracks.length > 1 && (
             <div className="tabs-row" style={{ marginBottom:16 }}>
               <span className="tabs-label">Track</span>
@@ -331,7 +268,6 @@ export default function Player() {
               ))}
             </div>
           )}
-
           {revisions.length > 1 && (
             <div className="tabs-row" style={{ marginBottom:20 }}>
               <span className="tabs-label">Version</span>
@@ -343,16 +279,9 @@ export default function Player() {
               ))}
             </div>
           )}
-
           <div className="player-box">
             <div className="waveform-wrap">
-              <Waveform
-                peaks={activeTrack?.peaks}
-                progress={progress}
-                notes={notes}
-                duration={duration}
-                onSeek={handleSeek}
-              />
+              <Waveform peaks={activeTrack?.peaks} progress={progress} notes={notes} duration={duration} onSeek={handleSeek} />
               <div className="time-row">
                 <span className="time-label">{fmt(currentTime)}</span>
                 <span className="time-label">{notes.length > 0 ? notes.length + (notes.length===1?' note':' notes') : ''}</span>
@@ -362,60 +291,38 @@ export default function Player() {
             <div className="transport">
               <button className="play-btn" onClick={togglePlay} disabled={!audioUrl}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="#000">
-                  {playing
-                    ? <><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>
-                    : <polygon points="3,1 15,8 3,15"/>
-                  }
+                  {playing ? <><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></> : <polygon points="3,1 15,8 3,15"/>}
                 </svg>
               </button>
-              <div className="time-display">
-                <span className="time-cur">{fmt(currentTime)}</span>
-                <span> / {fmt(duration)}</span>
-              </div>
-              {activeRevision && (
-                <span className="rev-badge">{activeRevision.label || `v${activeRevision.version_number || 1}`}</span>
-              )}
+              <div className="time-display"><span className="time-cur">{fmt(currentTime)}</span><span> / {fmt(duration)}</span></div>
+              {activeRevision && <span className="rev-badge">{activeRevision.label || `v${activeRevision.version_number || 1}`}</span>}
             </div>
           </div>
-
           <div className="note-bar">
             <div className="note-bar-top">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               Note at <span className="ts-badge">{fmt(pinnedTime)}</span>
               <span style={{ fontSize:10, color:'var(--t3)' }}>(updates while playing)</span>
             </div>
-            <textarea value={noteText} onChange={e => setNoteText(e.target.value)}
-              placeholder="Add a timestamped note…" />
+            <textarea value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add a timestamped note…" />
             <div className="note-actions">
               <button className="btn-ghost" onClick={() => setNoteText('')}>Clear</button>
               <button className="btn-amber" onClick={postNote} disabled={!noteText.trim()}>Post Note</button>
             </div>
           </div>
         </div>
-
         <div className="right">
-          <div className="panel-header">
-            <div className="panel-title">Notes ({notes.length})</div>
-          </div>
+          <div className="panel-header"><div className="panel-title">Notes ({notes.length})</div></div>
           <div className="panel-body">
             {notes.length === 0 ? (
-              <div className="empty-notes">
-                <div style={{ fontSize:28, marginBottom:8, opacity:.4 }}>♪</div>
-                No notes yet.<br />Hit play and leave feedback.
-              </div>
+              <div className="empty-notes"><div style={{ fontSize:28, marginBottom:8, opacity:.4 }}>♪</div>No notes yet.<br />Hit play and leave feedback.</div>
             ) : notes.map(n => (
               <div key={n.id} className="note-item">
                 <div className="note-header">
                   <span className="note-author">{n.author_name || 'Anonymous'}</span>
                   {n.timestamp_sec != null && (
                     <span className="note-ts" onClick={() => {
-                      if (audioRef.current && duration) {
-                        audioRef.current.currentTime = n.timestamp_sec;
-                        setCurrentTime(n.timestamp_sec);
-                        setPinnedTime(n.timestamp_sec);
-                      }
+                      if (audioRef.current && duration) { audioRef.current.currentTime = n.timestamp_sec; setCurrentTime(n.timestamp_sec); setPinnedTime(n.timestamp_sec); }
                     }}>{n.timestamp_label || fmt(n.timestamp_sec)}</span>
                   )}
                   <span className="note-date">{new Date(n.created_at).toLocaleDateString()}</span>
@@ -426,14 +333,12 @@ export default function Player() {
           </div>
         </div>
       </div>
-
       {audioUrl && (
         <audio ref={audioRef} src={audioUrl} preload="metadata"
           onTimeUpdate={e => { setCurrentTime(e.target.currentTime); setPinnedTime(e.target.currentTime); }}
           onDurationChange={e => setDuration(e.target.duration)}
-          onEnded={() => setPlaying(false)}
-        />
+          onEnded={() => setPlaying(false)} />
       )}
     </>
   );
-                }
+}
