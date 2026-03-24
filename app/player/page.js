@@ -66,7 +66,6 @@ export default function Player(){
   const activeTrack=tracks.find(t=>t.id===activeTrackId)||null;
   const audioUrl=activeRevision?activeRevision.mp3_url||activeRevision.audio_url:activeTrack?.mp3_url||activeTrack?.audio_url;
   useEffect(()=>{const el=audioRef.current;if(!el)return;if(audioUrl){if(el.src!==audioUrl){el.src=audioUrl;el.load();setDuration(0);setCurrentTime(0);}}else{el.src='';el.load();setDuration(0);setCurrentTime(0);}},[audioUrl]);
-  // Keep audio loop in sync with state
   useEffect(()=>{if(audioRef.current)audioRef.current.loop=looping;},[looping]);
   function activateTrack(trackId){if(trackId===activeTrackId){setActiveTrackId(null);return;}if(audioRef.current){audioRef.current.pause();}setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(trackId);const t=tracks.find(tr=>tr.id===trackId);if(!t)return;const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);}
   function selectRevision(track,rev){if(audioRef.current){audioRef.current.pause();}setPlaying(false);setCurrentTime(0);setDuration(0);setActiveRevision(rev);loadNotes(track.id,rev?.id);}
@@ -90,18 +89,15 @@ export default function Player(){
     .player-station{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--border);padding:12px 16px;box-shadow:0 2px 20px rgba(0,0,0,.5);}
     .ps-track-info{display:flex;align-items:center;gap:8px;margin-bottom:10px;}.ps-track-name{font-family:var(--fh);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}.ps-rev-badge{font-size:9px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);color:var(--amber);white-space:nowrap;}.ps-tone-badge{font-size:9px;padding:2px 7px;border-radius:4px;background:var(--surf2);border:1px solid var(--border2);color:var(--t3);white-space:nowrap;}
     .ps-waveform{border-radius:8px;background:var(--surf2);padding:8px 10px 4px;margin-bottom:10px;}.ps-time-row{display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:2px;}
-    /* Transport row: skip+play+skip left-cluster, loop+time right */
-    .ps-transport{display:flex;align-items:center;gap:0;}
-    .ps-transport-left{display:flex;align-items:center;gap:6px;}
-    .ps-transport-right{display:flex;align-items:center;gap:10px;margin-left:auto;}
-    /* Play/pause — bigger, amber circle */
+    /* 3-col grid: play is ALWAYS mathematically centered */
+    .ps-transport{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0;}
+    .ps-transport-left{display:flex;align-items:center;justify-content:flex-end;padding-right:12px;}
+    .ps-transport-center{display:flex;align-items:center;justify-content:center;}
+    .ps-transport-right{display:flex;align-items:center;justify-content:flex-start;gap:10px;padding-left:12px;}
     .ps-play-btn{width:48px;height:48px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.ps-play-btn:disabled{opacity:.3;pointer-events:none;}
-    /* Skip buttons — same height as play, transparent bg, amber icon */
     .ps-skip-btn{width:44px;height:44px;border-radius:10px;background:transparent;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:var(--t2);-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}.ps-skip-btn:hover,.ps-skip-btn:active{color:var(--text);}
     .ps-skip-label{font-family:var(--fm);font-size:9px;font-weight:600;line-height:1;letter-spacing:.04em;}
-    /* Loop button — icon only, lights up amber when active */
-    .ps-loop-btn{width:40px;height:40px;border-radius:8px;background:transparent;border:1.5px solid transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--t3);-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:all .15s;flex-shrink:0;}.ps-loop-btn:hover{color:var(--t2);}
-    .ps-loop-btn.active{color:var(--amber);border-color:rgba(232,160,32,.35);background:var(--aglow);}
+    .ps-loop-btn{width:40px;height:40px;border-radius:8px;background:transparent;border:1.5px solid transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--t3);-webkit-tap-highlight-color:transparent;touch-action:manipulation;transition:all .15s;flex-shrink:0;}.ps-loop-btn:hover{color:var(--t2);}.ps-loop-btn.active{color:var(--amber);border-color:rgba(232,160,32,.35);background:var(--aglow);}
     .ps-time{font-size:13px;color:var(--t2);font-variant-numeric:tabular-nums;white-space:nowrap;}.ps-time strong{color:var(--text);}
     .ps-no-track{font-size:12px;color:var(--t3);text-align:center;padding:12px;}
     .topbar{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--surf);border-bottom:1px solid var(--border);}.logo{font-family:var(--fh);font-size:17px;color:var(--text);text-decoration:none;}.logo em{color:var(--amber);font-style:normal;}.breadcrumb{font-size:12px;color:var(--t2);margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}.back{font-size:11px;color:var(--t2);text-decoration:none;padding:5px 10px;border-radius:7px;border:1px solid var(--border2);white-space:nowrap;-webkit-tap-highlight-color:transparent;}.back:hover{color:var(--text);}
@@ -113,34 +109,29 @@ export default function Player(){
         <div className="ps-track-info"><span className="ps-track-name">{activeTrack.title}</span>{activeRevision&&<span className="ps-rev-badge">{activeRevision.label||'v1'}</span>}{(activeRevision?.tone_label||activeTrack.tone_label)&&<span className="ps-tone-badge">{activeRevision?.tone_label||activeTrack.tone_label}</span>}</div>
         <div className="ps-waveform"><Waveform peaks={activeTrack.peaks} progress={progress} notes={notes} duration={duration} onSeek={handleSeek}/><div className="ps-time-row"><span>{fmt(currentTime)}</span><span>{notes.length>0?notes.length+(notes.length===1?' note':' notes'):''}</span><span>{fmt(duration)}</span></div></div>
         <div className="ps-transport">
+          {/* Left col — skip back, right-aligned so it hugs the play button */}
           <div className="ps-transport-left">
-            {/* Skip back 10s */}
             <button className="ps-skip-btn" onClick={()=>skip(-10)} disabled={!audioUrl} title="Back 10s">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/>
-              </svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>
               <span className="ps-skip-label">10</span>
             </button>
-            {/* Play/Pause — bigger */}
+          </div>
+          {/* Center col — play button, always dead center */}
+          <div className="ps-transport-center">
             <button className="ps-play-btn" onClick={togglePlay} disabled={!audioUrl}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="#000">
                 {playing?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>:<polygon points="3,1 15,8 3,15"/>}
               </svg>
             </button>
-            {/* Skip forward 10s */}
+          </div>
+          {/* Right col — skip forward, loop, time */}
+          <div className="ps-transport-right">
             <button className="ps-skip-btn" onClick={()=>skip(10)} disabled={!audioUrl} title="Forward 10s">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.95"/>
-              </svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.95"/></svg>
               <span className="ps-skip-label">10</span>
             </button>
-          </div>
-          <div className="ps-transport-right">
-            {/* Loop toggle */}
             <button className={'ps-loop-btn'+(looping?' active':'')} onClick={()=>setLooping(l=>!l)} title={looping?'Loop on':'Loop off'}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-              </svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
             </button>
             <span className="ps-time"><strong>{fmt(currentTime)}</strong> / {fmt(duration)}</span>
           </div>
