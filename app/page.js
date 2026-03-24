@@ -2,45 +2,41 @@
 import { useEffect, useState, useRef } from 'react';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
-function fallbackPeaks() {
-  const p = []; let s = Date.now() & 0xFFFFFF;
+const STABLE_PEAKS = (() => {
+  const p = []; let s = 0xABCDEF;
   for (let i = 0; i < 100; i++) {
-    s ^= s << 13; s ^= s >> 17; s ^= s << 5;
-    const n = i / 100;
-    p.push(Math.max(0.04, Math.min(0.96, (0.3 + Math.sin(n * Math.PI) * 0.4) * (0.5 + (s >>> 0) / 0xFFFFFFFF * 0.5))));
+    s ^= s << 13; s ^= s >> 17; s ^= s << 5; s >>>= 0;
+    p.push(Math.max(0.04, Math.min(0.96, (0.3 + Math.sin(i/100*Math.PI)*0.4)*(0.5+s/0xFFFFFFFF*0.5))));
   }
   return p;
-}
+})();
 
 function WaveformCanvas({ peaks }) {
   const ref = useRef(null);
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
-    const data = (peaks && peaks.length) ? peaks : fallbackPeaks();
+    const data = (peaks && peaks.length) ? peaks : STABLE_PEAKS;
     const W = canvas.offsetWidth || 268, H = 48;
-    canvas.width = W * window.devicePixelRatio;
-    canvas.height = H * window.devicePixelRatio;
-    canvas.style.width = W + 'px';
-    canvas.style.height = H + 'px';
+    canvas.width = W * devicePixelRatio; canvas.height = H * devicePixelRatio;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
     const ctx = canvas.getContext('2d');
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-    const cy = H / 2, BAR = 2, GAP = 1, STEP = BAR + GAP;
-    const numBars = Math.floor(W / STEP);
-    ctx.clearRect(0, 0, W, H);
-    for (let i = 0; i < numBars; i++) {
-      const pi = Math.floor((i / numBars) * data.length);
-      const amp = data[Math.min(pi, data.length - 1)];
-      const maxH = cy - 4, h = Math.max(1.5, amp * maxH);
-      const g = ctx.createLinearGradient(0, cy - h, 0, cy + h);
-      g.addColorStop(0, 'rgba(232,160,32,.55)');
-      g.addColorStop(.5, 'rgba(232,160,32,.25)');
-      g.addColorStop(1, 'rgba(232,160,32,.06)');
-      ctx.fillStyle = g;
-      ctx.fillRect(i * STEP, cy - h, BAR, h * 2);
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+    const cy = H/2, BAR=2, GAP=1, STEP=BAR+GAP, numBars=Math.floor(W/STEP);
+    for (let i=0; i<numBars; i++) {
+      const pi=Math.floor(i/numBars*data.length), amp=data[Math.min(pi,data.length-1)];
+      const h=Math.max(1.5, amp*(cy-4));
+      const g=ctx.createLinearGradient(0,cy-h,0,cy+h);
+      g.addColorStop(0,'rgba(232,160,32,.55)'); g.addColorStop(.5,'rgba(232,160,32,.25)'); g.addColorStop(1,'rgba(232,160,32,.06)');
+      ctx.fillStyle=g; ctx.fillRect(i*STEP, cy-h, BAR, h*2);
     }
   }, [peaks]);
-  return <canvas ref={ref} style={{ display: 'block', width: '100%', height: '100%' }} />;
+  return <canvas ref={ref} style={{ display:'block', width:'100%', height:'100%' }} />;
+}
+
+function bytesToSize(b) {
+  if (b < 1024*1024) return (b/1024).toFixed(0) + ' KB';
+  return (b/1024/1024).toFixed(1) + ' MB';
 }
 
 export default function Dashboard() {
@@ -50,7 +46,8 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [projName, setProjName] = useState('');
   const [projArtist, setProjArtist] = useState('');
-  const [pendingFile, setPendingFile] = useState(null);
+  // tracks = [{file, name}]
+  const [tracks, setTracks] = useState([]);
   const [creating, setCreating] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [dragging, setDragging] = useState(false);
@@ -72,60 +69,80 @@ export default function Dashboard() {
     setLoading(false);
   }
 
+  function addFiles(files) {
+    const audioFiles = [...files].filter(f =>
+      f.type.startsWith('audio/') || /\.(wav|mp3|aiff|aif|flac|m4a)$/i.test(f.name)
+    );
+    if (!audioFiles.length) return;
+    setTracks(prev => {
+      const existing = new Set(prev.map(t => t.file.name));
+      const newOnes = audioFiles
+        .filter(f => !existing.has(f.name))
+        .map(f => ({ file: f, name: f.name.replace(/\.[^.]+$/, '') }));
+      return [...prev, ...newOnes];
+    });
+  }
+
+  function updateTrackName(idx, name) {
+    setTracks(prev => prev.map((t, i) => i===idx ? {...t, name} : t));
+  }
+
+  function removeTrack(idx) {
+    setTracks(prev => prev.filter((_, i) => i!==idx));
+  }
+
   async function createProject() {
-    if (!projName || !pendingFile) return;
+    if (!projName || tracks.length === 0) return;
     setCreating(true);
-    setStatusMsg('Creating project…');
     try {
       const { data: proj, error: projErr } = await sb.from('projects')
         .insert({ title: projName, artist: projArtist || 'Unknown Artist', peaks: [] })
         .select().single();
       if (projErr) throw projErr;
-      setStatusMsg('Uploading audio…');
-      const r = await fetch(UPLOAD_WORKER_URL, {
-        method: 'POST',
-        headers: {
-          'X-File-Name': pendingFile.name,
-          'X-Project-Id': proj.id,
-          'Content-Type': pendingFile.type || 'audio/wav'
-        },
-        body: pendingFile
-      });
-      const result = await r.json();
-      if (result.url) {
-        setStatusMsg('Saving track…');
-        await sb.from('tracks').insert({
-          project_id: proj.id, title: projName,
-          audio_url: result.url, mp3_url: result.url, position: 0, peaks: []
+
+      for (let i = 0; i < tracks.length; i++) {
+        const t = tracks[i];
+        setStatusMsg(`Uploading ${i+1}/${tracks.length}: ${t.name}`);
+        const r = await fetch(UPLOAD_WORKER_URL, {
+          method: 'POST',
+          headers: {
+            'X-File-Name': t.file.name,
+            'X-Project-Id': proj.id,
+            'Content-Type': t.file.type || 'audio/wav'
+          },
+          body: t.file
         });
+        const result = await r.json();
+        if (result.url) {
+          await sb.from('tracks').insert({
+            project_id: proj.id,
+            title: t.name || t.file.name,
+            audio_url: result.url,
+            mp3_url: result.url,
+            position: i,
+            peaks: []
+          });
+        }
       }
-      setShowModal(false);
-      setProjName(''); setProjArtist(''); setPendingFile(null); setStatusMsg('');
+
+      closeModal();
       await loadProjects();
-    } catch (e) { setStatusMsg('Error: ' + e.message); }
-    setCreating(false);
+    } catch (e) { setStatusMsg('Error: ' + e.message); setCreating(false); }
+  }
+
+  function closeModal() {
+    setShowModal(false); setProjName(''); setProjArtist('');
+    setTracks([]); setStatusMsg(''); setDragging(false); setCreating(false);
   }
 
   function handleDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     setDragging(false);
-    const f = e.dataTransfer?.files?.[0];
-    if (f && (f.type.startsWith('audio/') || /\.(wav|mp3|aiff|aif|flac|m4a)$/i.test(f.name))) {
-      setPendingFile(f);
-    }
+    addFiles(e.dataTransfer?.files || []);
   }
 
-  function handleDragOver(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragging(true);
-  }
-
-  function handleDragLeave(e) {
-    e.preventDefault();
-    setDragging(false);
-  }
+  function handleDragOver(e) { e.preventDefault(); e.stopPropagation(); setDragging(true); }
+  function handleDragLeave(e) { e.preventDefault(); setDragging(false); }
 
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -154,15 +171,22 @@ export default function Dashboard() {
         .card-wave{height:48px;padding:0 16px;margin-bottom:4px;}
         .card-meta{padding:10px 16px 14px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);font-size:10px;color:var(--t3);}
         .empty{grid-column:1/-1;text-align:center;padding:80px 20px;color:var(--t2);} .empty-title{font-family:var(--fh);font-size:22px;margin-bottom:8px;}
-        .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(8px);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;}
-        .modal{background:var(--surf);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:560px;padding:32px;}
+        .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(8px);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;}
+        .modal{background:var(--surf);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:600px;padding:32px;margin:auto;}
         .modal-title{font-family:var(--fh);font-size:24px;margin-bottom:24px;}
         .field{margin-bottom:16px;} .field label{display:block;font-size:11px;color:var(--t2);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px;}
         .field input{width:100%;background:var(--surf2);border:1.5px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--fm);font-size:14px;padding:12px 14px;outline:none;transition:border-color .15s;} .field input:focus{border-color:var(--amber);}
-        .dropzone{border:2px dashed var(--border2);border-radius:12px;background:var(--surf2);padding:32px 20px;text-align:center;cursor:pointer;font-size:12px;color:var(--t2);transition:all .2s;position:relative;}
+        .dropzone{border:2px dashed var(--border2);border-radius:12px;background:var(--surf2);padding:28px 20px;text-align:center;cursor:pointer;font-size:12px;color:var(--t2);transition:all .2s;}
         .dropzone:hover,.dropzone.over{border-color:var(--amber);background:var(--aglow);color:var(--amber);}
-        .dropzone.has-file{border-color:var(--amber);border-style:solid;background:var(--aglow);color:var(--amber);}
-        .dropzone-icon{font-size:28px;margin-bottom:10px;opacity:.6;}
+        .dropzone.has-files{border-color:var(--amber);border-style:dashed;background:var(--aglow);}
+        .dropzone-icon{font-size:28px;margin-bottom:8px;}
+        .tracks-list{margin-top:16px;display:flex;flex-direction:column;gap:8px;}
+        .track-row{display:flex;align-items:center;gap:10px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;animation:cardIn .2s ease both;}
+        .track-num{font-size:11px;color:var(--t3);min-width:18px;text-align:right;}
+        .track-input{flex:1;background:transparent;border:none;border-bottom:1.5px solid var(--border2);color:var(--text);font-family:var(--fm);font-size:13px;padding:4px 0;outline:none;transition:border-color .15s;} .track-input:focus{border-color:var(--amber);}
+        .track-meta{font-size:10px;color:var(--t3);white-space:nowrap;}
+        .track-remove{width:22px;height:22px;border-radius:50%;border:1px solid var(--border2);background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;flex-shrink:0;transition:all .15s;} .track-remove:hover{border-color:#f05050;color:#f05050;}
+        .add-more{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2);cursor:pointer;padding:8px;border-radius:8px;border:1px dashed var(--border2);justify-content:center;transition:all .15s;margin-top:4px;} .add-more:hover{border-color:var(--amber);color:var(--amber);}
         .modal-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:24px;border-top:1px solid var(--border);padding-top:20px;}
         .status-msg{font-size:11px;color:var(--t2);}
         .btn-cancel{font-family:var(--fm);font-size:13px;padding:11px 18px;border-radius:9px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;}
@@ -191,7 +215,7 @@ export default function Dashboard() {
           <div className="hero-stats">
             <div className="stat"><div className="stat-num">{projects.length}</div><div className="stat-label">Projects</div></div>
             <div className="stat-div" />
-            <div className="stat"><div className="stat-num">{projects.reduce((t,p) => t+(p.tracks?.length||0), 0)}</div><div className="stat-label">Tracks</div></div>
+            <div className="stat"><div className="stat-num">{projects.reduce((t,p)=>t+(p.tracks?.length||0),0)}</div><div className="stat-label">Tracks</div></div>
           </div>
         </div>
 
@@ -235,9 +259,10 @@ export default function Dashboard() {
       </div>
 
       {showModal && (
-        <div className="modal-bg" onClick={e => e.target===e.currentTarget && !creating && setShowModal(false)}>
+        <div className="modal-bg" onClick={e => e.target===e.currentTarget && !creating && closeModal()}>
           <div className="modal">
             <div className="modal-title">New Project</div>
+
             <div className="field">
               <label>Project Name</label>
               <input value={projName} onChange={e => setProjName(e.target.value)} placeholder="Summer EP 2026" autoFocus />
@@ -246,34 +271,51 @@ export default function Dashboard() {
               <label>Artist / Band</label>
               <input value={projArtist} onChange={e => setProjArtist(e.target.value)} placeholder="Artist name" />
             </div>
+
             <div className="field">
-              <label>Audio File</label>
+              <label>Tracks ({tracks.length})</label>
               <div
-                className={`dropzone ${dragging?'over':''} ${pendingFile?'has-file':''}`}
-                onDragOver={handleDragOver}
-                onDragEnter={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
+                className={`dropzone ${dragging?'over':''} ${tracks.length>0?'has-files':''}`}
+                onDragOver={handleDragOver} onDragEnter={handleDragOver}
+                onDragLeave={handleDragLeave} onDrop={handleDrop}
                 onClick={() => document.getElementById('file-upload').click()}>
-                <div className="dropzone-icon">{pendingFile ? '✓' : '🎵'}</div>
-                {pendingFile
-                  ? pendingFile.name
-                  : <><strong>Drop your WAV / MP3 here</strong><br /><span style={{ fontSize:11, opacity:.6 }}>or click to browse</span></>
+                <div className="dropzone-icon">{tracks.length > 0 ? '🎵' : '🎵'}</div>
+                {tracks.length === 0
+                  ? <><strong>Drop WAV / MP3 files here</strong><br /><span style={{ fontSize:11, opacity:.6 }}>Drag multiple files at once — or click to browse</span></>
+                  : <><strong style={{ color:'var(--amber)' }}>{tracks.length} file{tracks.length!==1?'s':''} added</strong><br /><span style={{ fontSize:11, opacity:.6 }}>Drop more to add — or click to browse</span></>
                 }
                 <input id="file-upload" type="file" accept=".wav,.mp3,.aiff,.aif,.flac,.m4a,audio/*"
-                  style={{ display:'none' }}
-                  onChange={e => { if(e.target.files[0]) setPendingFile(e.target.files[0]); }} />
+                  multiple style={{ display:'none' }}
+                  onChange={e => { addFiles(e.target.files); e.target.value=''; }} />
               </div>
+
+              {tracks.length > 0 && (
+                <div className="tracks-list">
+                  {tracks.map((t, i) => (
+                    <div key={i} className="track-row" style={{ animationDelay: i*40+'ms' }}>
+                      <span className="track-num">{i+1}</span>
+                      <input
+                        className="track-input"
+                        value={t.name}
+                        onChange={e => updateTrackName(i, e.target.value)}
+                        placeholder={`Track ${i+1}`}
+                      />
+                      <span className="track-meta">{bytesToSize(t.file.size)}</span>
+                      <button className="track-remove" onClick={() => removeTrack(i)} title="Remove">
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
             <div className="modal-footer">
               <span className="status-msg">{statusMsg}</span>
               <div style={{ display:'flex', gap:10 }}>
-                <button className="btn-cancel" disabled={creating}
-                  onClick={() => { setShowModal(false); setProjName(''); setProjArtist(''); setPendingFile(null); setStatusMsg(''); setDragging(false); }}>
-                  Cancel
-                </button>
-                <button className="btn-create" disabled={!projName||!pendingFile||creating} onClick={createProject}>
-                  {creating ? 'Creating…' : 'Create Project →'}
+                <button className="btn-cancel" disabled={creating} onClick={closeModal}>Cancel</button>
+                <button className="btn-create" disabled={!projName||tracks.length===0||creating} onClick={createProject}>
+                  {creating ? statusMsg || 'Creating…' : `Create Project (${tracks.length} track${tracks.length!==1?'s':''})`}
                 </button>
               </div>
             </div>
