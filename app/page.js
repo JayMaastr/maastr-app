@@ -8,7 +8,6 @@ const STABLE_PEAKS = (() => {
   return p;
 })();
 
-// 9 tone settings: index = row*3+col, row0=Loud, row2=Gentle, col0=Dark, col2=Bright
 const TONES = [
   {label:'Dark + Loud',   short:'D+L', desc:'Heavy low end, maximum punch. Metal, hip-hop, EDM.'},
   {label:'Neutral + Loud',short:'N+L', desc:'Balanced but loud and competitive. Pop, rock, mainstream.'},
@@ -20,20 +19,48 @@ const TONES = [
   {label:'Neutral + Gentle',short:'N+G',desc:'Natural dynamics, no hype. Singer-songwriter, lo-fi.'},
   {label:'Bright + Gentle',short:'B+G', desc:'Airy and delicate. Ambient, new age, classical.'},
 ];
-const DEFAULT_TONE = 4; // Neutral + Normal (center)
+const DEFAULT_TONE = 4;
 
-function getToneMemory(trackName) {
-  try { const v=localStorage.getItem('mt_'+trackName.toLowerCase().replace(/\s+/g,'_')); return v!=null?parseInt(v):DEFAULT_TONE; } catch{return DEFAULT_TONE;}
+function getToneMemory(name) {
+  try{const v=localStorage.getItem('mt_'+name.toLowerCase().replace(/\s+/g,'_'));return v!=null?parseInt(v):DEFAULT_TONE;}catch{return DEFAULT_TONE;}
 }
-function setToneMemory(trackName, idx) {
-  try { localStorage.setItem('mt_'+trackName.toLowerCase().replace(/\s+/g,'_'), idx); } catch{}
+function setToneMemory(name,idx) {
+  try{localStorage.setItem('mt_'+name.toLowerCase().replace(/\s+/g,'_'),idx);}catch{}
+}
+
+// Compute waveform peaks from an audio file using Web Audio API
+async function computePeaks(file, numPeaks = 100) {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    audioCtx.close();
+    const rawData = audioBuffer.getChannelData(0);
+    const blockSize = Math.floor(rawData.length / numPeaks);
+    const peaks = [];
+    for (let i = 0; i < numPeaks; i++) {
+      let max = 0;
+      const start = i * blockSize;
+      for (let j = 0; j < blockSize; j++) {
+        const val = Math.abs(rawData[start + j] || 0);
+        if (val > max) max = val;
+      }
+      peaks.push(Math.min(1, max));
+    }
+    // Normalize so loudest peak = 0.95
+    const maxPeak = Math.max(...peaks) || 1;
+    return peaks.map(p => Math.max(0.04, (p / maxPeak) * 0.95));
+  } catch(e) {
+    console.warn('Peak computation failed:', e.message);
+    return [];
+  }
 }
 
 function WaveformCanvas({peaks}) {
   const ref=useRef(null);
   useEffect(()=>{
     const canvas=ref.current; if(!canvas) return;
-    const data=(peaks&&peaks.length)?peaks:STABLE_PEAKS;
+    const data=(peaks&&peaks.length>4)?peaks:STABLE_PEAKS;
     const W=canvas.offsetWidth||268,H=48;
     canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;
     canvas.style.width=W+'px';canvas.style.height=H+'px';
@@ -52,9 +79,8 @@ function WaveformCanvas({peaks}) {
 
 function ToneGrid({value, onChange, onSetAll, showSetAll}) {
   const [hovered, setHovered] = useState(null);
+  const tip = TONES[hovered != null ? hovered : value];
   const rows = ['LOUDER','NORMAL','GENTLER'];
-  const cols = ['DARKER','NEUTRAL','BRIGHTER'];
-  const tip = hovered != null ? TONES[hovered] : TONES[value];
   return (
     <div className="tone-grid-wrap">
       <div className="tone-axis-top">
@@ -70,7 +96,7 @@ function ToneGrid({value, onChange, onSetAll, showSetAll}) {
           {TONES.map((t,i)=>(
             <button key={i} className={`tone-cell ${i===value?'active':''} ${i===4?'center':''}`}
               onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}
-              onClick={()=>onChange(i)} title={t.label}>
+              onClick={()=>onChange(i)}>
               <span className="tone-cell-short">{t.short}</span>
             </button>
           ))}
@@ -80,72 +106,47 @@ function ToneGrid({value, onChange, onSetAll, showSetAll}) {
         <span className="tone-tip-label">{tip.label}</span>
         <span className="tone-tip-desc">{tip.desc}</span>
       </div>
-      {showSetAll&&(
-        <button className="set-all-btn" onClick={()=>onSetAll(value)}>
-          Set all tracks to this setting
-        </button>
-      )}
+      {showSetAll&&<button className="set-all-btn" onClick={()=>onSetAll(value)}>Set all tracks to this setting</button>}
     </div>
   );
 }
 
 function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, onSetAll}) {
-  const [showTone, setShowTone] = useState(false);
-  const [nameInput, setNameInput] = useState(track.name);
-  const [suggestions, setSuggestions] = useState([]);
-  const [showSug, setShowSug] = useState(false);
-  const sugRef = useRef(null);
-
-  // Close suggestions on outside click
+  const [showTone,setShowTone]=useState(false);
+  const [suggestions,setSuggestions]=useState([]);
+  const [showSug,setShowSug]=useState(false);
+  const sugRef=useRef(null);
   useEffect(()=>{
     if(!showSug) return;
-    const h=(e)=>{ if(sugRef.current&&!sugRef.current.contains(e.target)) setShowSug(false); };
+    const h=(e)=>{if(sugRef.current&&!sugRef.current.contains(e.target))setShowSug(false);};
     document.addEventListener('mousedown',h);
-    return ()=>document.removeEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
   },[showSug]);
-
   function handleNameChange(val) {
-    setNameInput(val);
-    onChange({...track, name:val});
-    if(existingTracks&&existingTracks.length) {
-      const q=val.toLowerCase();
-      const s=q?existingTracks.filter(t=>t.title.toLowerCase().includes(q)):existingTracks;
-      setSuggestions(s);
-      setShowSug(s.length>0);
+    onChange({...track,name:val});
+    if(existingTracks&&existingTracks.length){
+      const s=val?existingTracks.filter(t=>t.title.toLowerCase().includes(val.toLowerCase())):existingTracks;
+      setSuggestions(s);setShowSug(s.length>0);
     }
   }
-
   function pickSuggestion(t) {
     const tone=getToneMemory(t.title);
-    setNameInput(t.title);
-    onChange({...track, name:t.title, tone, isRevision:true, existingTrackId:t.id});
+    onChange({...track,name:t.title,tone,isRevision:true,existingTrackId:t.id});
     setShowSug(false);
-    setSuggestions([]);
   }
-
   function handleToneChange(i) {
-    onChange({...track, tone:i});
-    if(track.name.trim()) setToneMemory(track.name.trim(), i);
+    onChange({...track,tone:i});
+    if(track.name.trim()) setToneMemory(track.name.trim(),i);
   }
-
   return (
     <div className="track-row-v2">
-      {/* Track number */}
       <div className="trv2-num">{idx+1}</div>
-
       <div className="trv2-body">
-        {/* Name row */}
         <div className="trv2-name-row" ref={sugRef}>
           <div className="trv2-name-wrap">
-            <input className="trv2-name-input"
-              value={nameInput}
+            <input className="trv2-name-input" value={track.name}
               onChange={e=>handleNameChange(e.target.value)}
-              onFocus={()=>{
-                if(existingTracks&&existingTracks.length) {
-                  setSuggestions(existingTracks);
-                  setShowSug(true);
-                }
-              }}
+              onFocus={()=>{if(existingTracks?.length){setSuggestions(existingTracks);setShowSug(true);}}}
               placeholder={existingTracks?.length?"Type or pick existing track…":"Track name"}
             />
             {showSug&&suggestions.length>0&&(
@@ -159,8 +160,7 @@ function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, o
               </div>
             )}
           </div>
-          <button className={`tone-btn ${showTone?'active':''} ${track.isRevision?'revision-tone':''}`}
-            onClick={()=>setShowTone(v=>!v)} title="Mastering settings">
+          <button className={`tone-btn ${showTone?'active':''}`} onClick={()=>setShowTone(v=>!v)}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
               <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
@@ -170,28 +170,21 @@ function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, o
           </button>
           <button className="trv2-remove" onClick={onRemove}>×</button>
         </div>
-
-        {/* Filename reference */}
         <div className="trv2-filename">
           {track.isRevision&&<span className="revision-badge">revision</span>}
+          {track.peaksComputed&&<span className="revision-badge" style={{background:'rgba(80,200,120,.1)',color:'#50c878',borderColor:'rgba(80,200,120,.3)'}}>waveform ✓</span>}
           <em>{track.file.name}</em>
-          <span className="trv2-size">{track.file.size<1024*1024?(track.file.size/1024).toFixed(0)+' KB':(track.file.size/1024/1024).toFixed(1)+' MB'}</span>
+          <span className="trv2-size">{track.file.size<1048576?(track.file.size/1024).toFixed(0)+' KB':(track.file.size/1024/1024).toFixed(1)+' MB'}</span>
         </div>
-
-        {/* Tone grid (expandable) */}
-        {showTone&&(
-          <ToneGrid value={track.tone} onChange={handleToneChange}
-            showSetAll={showSetAll} onSetAll={onSetAll}/>
-        )}
+        {showTone&&<ToneGrid value={track.tone} onChange={handleToneChange} showSetAll={showSetAll} onSetAll={onSetAll}/>}
       </div>
     </div>
   );
 }
 
 function sanitizeFilename(name){return name.replace(/[^a-zA-Z0-9._-]/g,'_');}
-function urlToKey(url){try{return decodeURIComponent(new URL(url).pathname.replace(/^\//, ''));}catch{return null;}}
+function urlToKey(url){try{return decodeURIComponent(new URL(url).pathname.replace(/^\//,''));}catch{return null;}}
 
-// ProjectCard stays the same
 function ProjectCard({project,idx,onDelete,onSave}){
   const [menuOpen,setMenuOpen]=useState(false);
   const [editing,setEditing]=useState(false);
@@ -205,29 +198,28 @@ function ProjectCard({project,idx,onDelete,onSave}){
   const date=new Date(project.updated_at||project.created_at);
   const dateStr=months[date.getMonth()]+' '+date.getDate()+', '+date.getFullYear();
   useEffect(()=>{
-    if(!menuOpen) return;
+    if(!menuOpen)return;
     const h=(e)=>{if(menuRef.current&&!menuRef.current.contains(e.target))setMenuOpen(false);};
     document.addEventListener('mousedown',h);document.addEventListener('touchstart',h);
     return()=>{document.removeEventListener('mousedown',h);document.removeEventListener('touchstart',h);};
   },[menuOpen]);
   async function saveEdit(){
-    if(!editTitle.trim()) return;
+    if(!editTitle.trim())return;
     setSaving(true);
     await sb.from('projects').update({title:editTitle.trim(),artist:editArtist.trim()}).eq('id',project.id);
     setSaving(false);setEditing(false);onSave(project.id,editTitle.trim(),editArtist.trim());
   }
-  function cancelEdit(){setEditTitle(project.title||'');setEditArtist(project.artist||'');setEditing(false);}
-  if(editing) return(
+  if(editing)return(
     <div className="card editing" style={{animationDelay:idx*60+'ms'}}>
       <div className="card-edit">
         <div className="edit-label">Project Name</div>
         <input className="edit-input" value={editTitle} onChange={e=>setEditTitle(e.target.value)}
-          onKeyDown={e=>{if(e.key==='Enter')saveEdit();if(e.key==='Escape')cancelEdit();}} autoFocus/>
+          onKeyDown={e=>{if(e.key==='Enter')saveEdit();if(e.key==='Escape'){setEditTitle(project.title||'');setEditing(false);}}} autoFocus/>
         <div className="edit-label" style={{marginTop:10}}>Artist / Band</div>
         <input className="edit-input" value={editArtist} onChange={e=>setEditArtist(e.target.value)}
-          onKeyDown={e=>{if(e.key==='Enter')saveEdit();if(e.key==='Escape')cancelEdit();}}/>
+          onKeyDown={e=>{if(e.key==='Enter')saveEdit();if(e.key==='Escape'){setEditArtist(project.artist||'');setEditing(false);}}}/>
         <div className="edit-actions">
-          <button className="edit-cancel" onClick={cancelEdit}>Cancel</button>
+          <button className="edit-cancel" onClick={()=>{setEditTitle(project.title||'');setEditArtist(project.artist||'');setEditing(false);}}>Cancel</button>
           <button className="edit-save" disabled={!editTitle.trim()||saving} onClick={saveEdit}>{saving?'Saving…':'Save'}</button>
         </div>
       </div>
@@ -235,7 +227,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
       <div className="card-meta"><span>{tc} track{tc!==1?'s':''}</span><span>{dateStr}</span></div>
     </div>
   );
-  if(confirmDelete) return(
+  if(confirmDelete)return(
     <div className="card confirming" style={{animationDelay:idx*60+'ms'}}>
       <div className="confirm-overlay">
         <div className="confirm-title">Delete “{project.title}”?</div>
@@ -257,9 +249,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
         </div>
         <div ref={menuRef} style={{position:'relative',flexShrink:0}} onClick={e=>e.stopPropagation()}>
           <button className="menu-btn" onClick={()=>setMenuOpen(o=>!o)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-            </svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
           </button>
           {menuOpen&&(
             <div className="menu-dropdown">
@@ -318,7 +308,7 @@ export default function Dashboard(){
       (proj.tracks||[]).forEach(t=>{if(t.audio_url)audioUrls.add(t.audio_url);if(t.mp3_url&&t.mp3_url!==t.audio_url)audioUrls.add(t.mp3_url);});
       const {data:revs}=await sb.from('revisions').select('audio_url,mp3_url').eq('project_id',proj.id);
       (revs||[]).forEach(r=>{if(r.audio_url)audioUrls.add(r.audio_url);if(r.mp3_url&&r.mp3_url!==r.audio_url)audioUrls.add(r.mp3_url);});
-      await Promise.allSettled([...audioUrls].map(url=>{const k=urlToKey(url);if(!k)return Promise.resolve();return fetch(UPLOAD_WORKER_URL,{method:'DELETE',headers:{'X-File-Key':k}});}));
+      await Promise.allSettled([...audioUrls].map(url=>{const k=urlToKey(url);if(!k)return;return fetch(UPLOAD_WORKER_URL,{method:'DELETE',headers:{'X-File-Key':k}});}));
       await sb.from('notes').delete().eq('project_id',proj.id);
       await sb.from('revisions').delete().eq('project_id',proj.id);
       await sb.from('project_collaborators').delete().eq('project_id',proj.id);
@@ -330,24 +320,48 @@ export default function Dashboard(){
   }
 
   function addFiles(files){
-    const audioFiles=[...files].filter(f=>f.type.startsWith('audio/')||/\.(wav|mp3|aiff|aif|flac|m4a)$/i.test(f.name));
-    if(!audioFiles.length)return;
+    const audio=[...files].filter(f=>f.type.startsWith('audio/')||/\.(wav|mp3|aiff|aif|flac|m4a)$/i.test(f.name));
+    if(!audio.length)return;
     setTracks(prev=>{
       const existing=new Set(prev.map(t=>t.file.name));
-      return [...prev,...audioFiles.filter(f=>!existing.has(f.name)).map(f=>({file:f,name:'',tone:DEFAULT_TONE,showTone:false,isRevision:false,existingTrackId:null}))];
+      return [...prev,...audio.filter(f=>!existing.has(f.name)).map(f=>({file:f,name:'',tone:DEFAULT_TONE,peaks:[],peaksComputed:false,isRevision:false,existingTrackId:null}))];
+    });
+    // Compute peaks for each new file in the background
+    audio.forEach(file=>{
+      if(!Array.from(prev||[]).find(t=>t.file.name===file.name)) {
+        computePeaks(file).then(peaks=>{
+          setTracks(prev=>prev.map(t=>t.file.name===file.name?{...t,peaks,peaksComputed:peaks.length>0}:t));
+        });
+      }
+    });
+  }
+
+  function addFilesWithPeaks(files) {
+    const audio=[...files].filter(f=>f.type.startsWith('audio/')||/\.(wav|mp3|aiff|aif|flac|m4a)$/i.test(f.name));
+    if(!audio.length)return;
+    setTracks(prev=>{
+      const existing=new Set(prev.map(t=>t.file.name));
+      const newTracks=audio.filter(f=>!existing.has(f.name)).map(f=>({file:f,name:'',tone:DEFAULT_TONE,peaks:[],peaksComputed:false,isRevision:false,existingTrackId:null}));
+      // Compute peaks for each new file asynchronously
+      newTracks.forEach(t=>{
+        computePeaks(t.file).then(peaks=>{
+          setTracks(prev=>prev.map(tr=>tr.file.name===t.file.name?{...tr,peaks,peaksComputed:peaks.length>0}:tr));
+        });
+      });
+      return [...prev,...newTracks];
     });
   }
 
   function updateTrack(idx,updates){setTracks(prev=>prev.map((t,i)=>i===idx?{...t,...updates}:t));}
   function removeTrack(idx){setTracks(prev=>prev.filter((_,i)=>i!==idx));}
-  function setAllTones(toneIdx){setTracks(prev=>prev.map(t=>({...t,tone:toneIdx})));}
+  function setAllTones(idx){setTracks(prev=>prev.map(t=>({...t,tone:idx})));}
 
   async function createProject(){
-    if(!projName||tracks.length===0||tracks.some(t=>!t.name.trim())) return;
+    if(!projName||tracks.length===0||tracks.some(t=>!t.name.trim()))return;
     setCreating(true);
     try{
       const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist||'Unknown Artist',peaks:[]}).select().single();
-      if(projErr) throw projErr;
+      if(projErr)throw projErr;
       for(let i=0;i<tracks.length;i++){
         const t=tracks[i];
         setStatusMsg('Uploading '+(i+1)+'/'+tracks.length+': '+t.name);
@@ -356,21 +370,24 @@ export default function Dashboard(){
         const result=await r.json();
         if(result.url){
           const tone=TONES[t.tone];
-          if(t.isRevision&&t.existingTrackId){
-            // Upload as revision to existing track
-            const {data:existing}=await sb.from('revisions').select('version_number').eq('track_id',t.existingTrackId).order('version_number',{ascending:false}).limit(1);
-            const nextVer=(existing?.[0]?.version_number||1)+1;
-            await sb.from('revisions').update({is_active:false}).eq('track_id',t.existingTrackId);
-            await sb.from('revisions').insert({track_id:t.existingTrackId,project_id:proj.id,version_number:nextVer,label:'v'+nextVer,audio_url:result.url,mp3_url:result.url,tone_setting:t.tone,tone_label:tone.label,is_active:true});
-          } else {
-            // New track
-            const {data:newTrack}=await sb.from('tracks').insert({project_id:proj.id,title:t.name.trim(),audio_url:result.url,mp3_url:result.url,position:i,peaks:[],tone_setting:t.tone,tone_label:tone.label}).select().single();
-            if(newTrack){
-              // Also create initial revision v1
-              await sb.from('revisions').insert({track_id:newTrack.id,project_id:proj.id,version_number:1,label:'v1',audio_url:result.url,mp3_url:result.url,tone_setting:t.tone,tone_label:tone.label,is_active:true});
-            }
+          const peaks=t.peaks&&t.peaks.length>0?t.peaks:[];
+          // Compute peaks if not already done
+          let finalPeaks=peaks;
+          if(finalPeaks.length===0){
+            setStatusMsg('Computing waveform '+(i+1)+'/'+tracks.length+'…');
+            finalPeaks=await computePeaks(t.file);
           }
-          if(t.name.trim()) setToneMemory(t.name.trim(),t.tone);
+          const {data:newTrack}=await sb.from('tracks').insert({
+            project_id:proj.id,title:t.name.trim(),audio_url:result.url,mp3_url:result.url,
+            position:i,peaks:finalPeaks,tone_setting:t.tone,tone_label:tone.label
+          }).select().single();
+          if(newTrack){
+            await sb.from('revisions').insert({
+              track_id:newTrack.id,project_id:proj.id,version_number:1,label:'v1',
+              audio_url:result.url,mp3_url:result.url,tone_setting:t.tone,tone_label:tone.label,is_active:true
+            });
+          }
+          if(t.name.trim())setToneMemory(t.name.trim(),t.tone);
         }
       }
       closeModal();await loadProjects();
@@ -378,11 +395,10 @@ export default function Dashboard(){
   }
 
   function closeModal(){setShowModal(false);setProjName('');setProjArtist('');setTracks([]);setStatusMsg('');setDragging(false);setCreating(false);}
-  function handleDrop(e){e.preventDefault();e.stopPropagation();setDragging(false);addFiles(e.dataTransfer?.files||[]);}
+  function handleDrop(e){e.preventDefault();e.stopPropagation();setDragging(false);addFilesWithPeaks(e.dataTransfer?.files||[]);}
   function handleDragOver(e){e.preventDefault();e.stopPropagation();setDragging(true);}
   function handleDragLeave(e){e.preventDefault();setDragging(false);}
-
-  const allNamed = tracks.length>0 && tracks.every(t=>t.name.trim().length>0);
+  const allNamed=tracks.length>0&&tracks.every(t=>t.name.trim().length>0);
 
   return (
     <>
@@ -403,7 +419,7 @@ export default function Dashboard(){
         .section-title{font-family:var(--fh);font-size:18px;}
         .create-btn{display:flex;align-items:center;gap:7px;font-family:var(--fm);font-size:12px;font-weight:500;padding:9px 18px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;} .create-btn:hover{opacity:.9;}
         .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;padding-bottom:40px;}
-        .card{background:var(--surf);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:border-color .2s,transform .15s,box-shadow .2s;animation:cardIn .3s ease both;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+        .card{background:var(--surf);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;cursor:pointer;transition:border-color .2s,transform .15s,box-shadow .2s;animation:cardIn .3s ease both;-webkit-tap-highlight-color:transparent;}
         .card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 12px 40px rgba(0,0,0,.4);}
         .card.editing{cursor:default;border-color:var(--amber);} .card.confirming{border-color:var(--red);}
         @keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -413,10 +429,10 @@ export default function Dashboard(){
         .card-meta{padding:9px 14px 13px;display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);font-size:10px;color:var(--t3);}
         .menu-btn{width:32px;height:32px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:0;transition:all .15s;} .menu-btn:hover{background:var(--surf2);border-color:var(--border2);color:var(--t2);}
         .menu-dropdown{position:absolute;top:calc(100% + 4px);right:0;background:var(--surf2);border:1px solid var(--border2);border-radius:10px;min-width:160px;z-index:50;box-shadow:0 8px 32px rgba(0,0,0,.5);overflow:hidden;}
-        .menu-item{width:100%;padding:11px 14px;display:flex;align-items:center;gap:9px;font-family:var(--fm);font-size:12px;color:var(--t2);background:transparent;border:none;cursor:pointer;text-align:left;transition:background .12s,color .12s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;} .menu-item:hover,.menu-item:active{background:var(--surf3);color:var(--text);}
+        .menu-item{width:100%;padding:11px 14px;display:flex;align-items:center;gap:9px;font-family:var(--fm);font-size:12px;color:var(--t2);background:transparent;border:none;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;touch-action:manipulation;} .menu-item:hover,.menu-item:active{background:var(--surf3);color:var(--text);}
         .menu-item.danger{color:#e08080;} .menu-item.danger:hover,.menu-item.danger:active{background:rgba(224,80,80,.1);color:var(--red);}
         .menu-divider{height:1px;background:var(--border);margin:2px 0;}
-        .card-edit{padding:14px 14px 10px;} .edit-label{font-size:10px;color:var(--t3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px;}
+        .card-edit{padding:14px;} .edit-label{font-size:10px;color:var(--t3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px;}
         .edit-input{width:100%;background:var(--bg);border:1.5px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--fm);font-size:14px;padding:9px 11px;outline:none;-webkit-appearance:none;} .edit-input:focus{border-color:var(--amber);}
         .edit-actions{display:flex;gap:8px;margin-top:12px;}
         .edit-cancel{flex:1;font-family:var(--fm);font-size:12px;padding:9px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;}
@@ -427,7 +443,6 @@ export default function Dashboard(){
         .btn-cancel-sm{font-family:var(--fm);font-size:12px;padding:9px 16px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;}
         .btn-delete-confirm{font-family:var(--fm);font-size:12px;font-weight:500;padding:9px 16px;border-radius:8px;background:var(--red);color:#fff;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;}
         .empty{grid-column:1/-1;text-align:center;padding:80px 20px;color:var(--t2);} .empty-title{font-family:var(--fh);font-size:22px;margin-bottom:8px;}
-        /* Modal */
         .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(8px);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:32px 16px 24px;overflow-y:auto;}
         .modal{background:var(--surf);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:640px;padding:28px;margin:auto;}
         .modal-title{font-family:var(--fh);font-size:24px;margin-bottom:22px;}
@@ -436,7 +451,6 @@ export default function Dashboard(){
         .dropzone{border:2px dashed var(--border2);border-radius:12px;background:var(--surf2);padding:24px 16px;text-align:center;cursor:pointer;font-size:12px;color:var(--t2);transition:all .2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
         .dropzone:hover,.dropzone.over{border-color:var(--amber);background:var(--aglow);color:var(--amber);}
         .dropzone.has-files{border-color:rgba(232,160,32,.4);background:var(--aglow);}
-        /* Track rows v2 */
         .tracks-list-v2{margin-top:16px;display:flex;flex-direction:column;gap:12px;}
         .track-row-v2{display:flex;gap:10px;align-items:flex-start;background:var(--surf2);border:1px solid var(--border);border-radius:12px;padding:14px 12px;animation:cardIn .2s ease both;}
         .trv2-num{font-size:12px;color:var(--t3);min-width:18px;text-align:right;padding-top:14px;}
@@ -447,16 +461,14 @@ export default function Dashboard(){
         .trv2-suggestions{position:absolute;top:calc(100%+4px);left:0;right:0;background:var(--surf2);border:1px solid var(--border2);border-radius:10px;z-index:20;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.5);}
         .trv2-sug-item{width:100%;padding:11px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;border:none;color:var(--text);font-family:var(--fm);font-size:13px;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;} .trv2-sug-item:hover,.trv2-sug-item:active{background:var(--surf3);}
         .trv2-sug-tone{font-size:10px;color:var(--amber);background:var(--aglow);padding:2px 7px;border-radius:4px;white-space:nowrap;}
-        .trv2-filename{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--t3);}
-        .trv2-filename em{font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;}
+        .trv2-filename{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t3);flex-wrap:wrap;}
+        .trv2-filename em{font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;}
         .trv2-size{white-space:nowrap;}
         .trv2-remove{width:28px;height:28px;border-radius:50%;border:1px solid var(--border2);background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation;} .trv2-remove:hover{border-color:var(--red);color:var(--red);}
-        .revision-badge{font-size:9px;background:rgba(100,180,255,.12);color:#6ab4ff;border:1px solid rgba(100,180,255,.25);border-radius:4px;padding:2px 7px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;}
-        /* Mastering / Tone button */
+        .revision-badge{font-size:9px;background:rgba(100,180,255,.1);color:#6ab4ff;border:1px solid rgba(100,180,255,.25);border-radius:4px;padding:2px 6px;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;}
         .tone-btn{display:flex;align-items:center;gap:6px;padding:9px 12px;border-radius:9px;border:1.5px solid var(--border2);background:var(--surf);color:var(--t2);font-family:var(--fm);font-size:12px;cursor:pointer;white-space:nowrap;transition:all .15s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}
         .tone-btn:hover,.tone-btn.active{border-color:var(--amber);color:var(--amber);background:var(--aglow);}
         .tone-badge-sm{font-size:9px;background:rgba(232,160,32,.15);color:var(--amber);border-radius:4px;padding:2px 6px;border:1px solid rgba(232,160,32,.3);}
-        /* Tone Grid */
         .tone-grid-wrap{background:var(--surf3);border:1px solid var(--border2);border-radius:10px;padding:14px;margin-top:2px;}
         .tone-axis-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
         .tone-axis-label{font-size:9px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;}
@@ -467,27 +479,15 @@ export default function Dashboard(){
         .tone-cell:hover{border-color:var(--amber);color:var(--text);background:var(--aglow);}
         .tone-cell.active{border-color:var(--amber);background:rgba(232,160,32,.18);color:var(--amber);}
         .tone-cell.center{border-color:rgba(232,160,32,.3);}
-        .tone-cell-short{font-size:10px;font-weight:600;}
         .tone-tip{margin-top:10px;padding:8px 12px;background:var(--surf2);border-radius:7px;display:flex;flex-direction:column;gap:3px;}
-        .tone-tip-label{font-size:12px;color:var(--amber);font-weight:500;}
-        .tone-tip-desc{font-size:11px;color:var(--t2);}
+        .tone-tip-label{font-size:12px;color:var(--amber);font-weight:500;} .tone-tip-desc{font-size:11px;color:var(--t2);}
         .set-all-btn{width:100%;margin-top:10px;padding:10px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:12px;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;} .set-all-btn:hover{border-color:var(--amber);color:var(--amber);}
-        /* Modal footer */
         .modal-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:22px;border-top:1px solid var(--border);padding-top:18px;flex-wrap:wrap;}
         .status-msg{font-size:11px;color:var(--t2);}
         .btn-cancel{font-family:var(--fm);font-size:13px;padding:12px 20px;border-radius:9px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
         .btn-create{font-family:var(--fm);font-size:13px;font-weight:500;padding:12px 24px;border-radius:9px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;} .btn-create:disabled{opacity:.4;pointer-events:none;}
         .name-required{font-size:10px;color:#e08080;margin-top:4px;}
-        @media(max-width:640px){
-          .app{padding:0 16px;}
-          .hero{flex-direction:column;align-items:flex-start;padding:32px 0 28px;}
-          .hero-stats{width:100%;}
-          .grid{grid-template-columns:1fr;}
-          .modal-bg{padding:16px 12px 24px;}
-          .modal{padding:20px 16px;}
-          .trv2-filename em{max-width:130px;}
-          .tone-btn span:first-of-type{display:none;}
-        }
+        @media(max-width:640px){.app{padding:0 16px;}.hero{flex-direction:column;align-items:flex-start;padding:32px 0 28px;}.hero-stats{width:100%;}.grid{grid-template-columns:1fr;}.modal-bg{padding:16px 12px 24px;}.modal{padding:20px 16px;}.trv2-filename em{max-width:120px;}.tone-btn span:first-of-type{display:none;}}
       `}</style>
 
       <div className="app">
@@ -537,7 +537,7 @@ export default function Dashboard(){
               <input value={projArtist} onChange={e=>setProjArtist(e.target.value)} placeholder="Artist name"/>
             </div>
             <div className="field">
-              <label>Tracks {tracks.length>0&&<span style={{color:'var(--t3)',fontWeight:'normal'}}>({tracks.length} file{tracks.length!==1?'s':''})</span>}</label>
+              <label>Tracks {tracks.length>0&&<span style={{color:'var(--t3)',fontWeight:'normal'}}>({tracks.length})</span>}</label>
               <div className={`dropzone ${dragging?'over':''} ${tracks.length>0?'has-files':''}`}
                 onDragOver={handleDragOver} onDragEnter={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
                 onClick={()=>document.getElementById('file-upload').click()}>
@@ -545,7 +545,7 @@ export default function Dashboard(){
                 {tracks.length===0
                   ?<><strong>Drop WAV / MP3 files here</strong><br/><span style={{fontSize:11,opacity:.6}}>or tap to browse — multiple files OK</span></>
                   :<><strong style={{color:'var(--amber)'}}>{tracks.length} file{tracks.length!==1?'s':''} added</strong><br/><span style={{fontSize:11,opacity:.6}}>Drop more or tap to add</span></>}
-                <input id="file-upload" type="file" accept=".wav,.mp3,.aiff,.aif,.flac,.m4a,audio/*" multiple style={{display:'none'}} onChange={e=>{addFiles(e.target.files);e.target.value='';}}/>
+                <input id="file-upload" type="file" accept=".wav,.mp3,.aiff,.aif,.flac,.m4a,audio/*" multiple style={{display:'none'}} onChange={e=>{addFilesWithPeaks(e.target.files);e.target.value='';}}/>
               </div>
               {tracks.length>0&&(
                 <div className="tracks-list-v2">
@@ -557,9 +557,7 @@ export default function Dashboard(){
                       showSetAll={tracks.length>1}
                       onSetAll={setAllTones}/>
                   ))}
-                  {tracks.some(t=>!t.name.trim())&&(
-                    <div className="name-required">⚠ Please name all tracks before creating the project.</div>
-                  )}
+                  {!allNamed&&<div className="name-required">⚠ Please name all tracks before creating.</div>}
                 </div>
               )}
             </div>
@@ -577,4 +575,4 @@ export default function Dashboard(){
       )}
     </>
   );
-                  }
+            }
