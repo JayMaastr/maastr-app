@@ -36,26 +36,28 @@ function Waveform({ peaks, progress, notes, duration, onSeek }) {
     canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
+
     const data = stablePeaks.current;
     const BAR = 2, GAP = 1, STEP = BAR + GAP;
     const numBars = Math.floor(W / STEP);
     const cy = H / 2;
+
     const heights = new Float32Array(numBars);
     for (let i = 0; i < numBars; i++) {
       const pi = Math.floor(i / numBars * data.length);
       heights[i] = Math.max(2, data[Math.min(pi, data.length - 1)] * (cy - 6));
     }
-    // Note markers on offscreen canvas — only redraws when notes/duration change
+
+    // Bake note markers onto offscreen canvas (CSS pixel dimensions)
     const nc = document.createElement('canvas');
-    nc.width = W * dpr; nc.height = H * dpr;
+    nc.width = W; nc.height = H;
     const nctx = nc.getContext('2d');
-    nctx.scale(dpr, dpr);
     if (notes && notes.length && duration > 0) {
       notes.forEach(n => {
         if (n.timestamp_sec == null || n.timestamp_sec > duration) return;
         const x = (n.timestamp_sec / duration) * W;
         nctx.save();
-        nctx.strokeStyle = 'rgba(232,160,32,0.55)';
+        nctx.strokeStyle = 'rgba(255,255,255,0.3)';
         nctx.lineWidth = 1; nctx.setLineDash([2,3]);
         nctx.beginPath(); nctx.moveTo(x,4); nctx.lineTo(x,H-4); nctx.stroke();
         nctx.restore();
@@ -64,33 +66,52 @@ function Waveform({ peaks, progress, notes, duration, onSeek }) {
         nctx.beginPath(); nctx.arc(x,H-5,3.5,0,Math.PI*2); nctx.fill();
       });
     }
+
     let lastPlayX = -999;
+
     function draw() {
       const prog = Math.max(0, Math.min(1, progressRef.current || 0));
       const playX = prog * W;
+
       if (Math.abs(playX - lastPlayX) >= 0.5) {
         lastPlayX = playX;
         const cutBar = Math.floor(prog * numBars);
         ctx.clearRect(0, 0, W, H);
+
+        // Bars
         for (let i = 0; i < numBars; i++) {
           const h = heights[i];
           ctx.fillStyle = i < cutBar ? 'rgba(232,160,32,0.88)' : 'rgba(255,255,255,0.16)';
           ctx.fillRect(i * STEP, cy - h, BAR, h * 2);
         }
-        ctx.drawImage(nc, 0, 0, W, H);
-        if (prog > 0.002) {
+
+        // Note markers (baked at CSS size, drawn at CSS size — no scale needed)
+        ctx.drawImage(nc, 0, 0);
+
+        // Playhead — bright white so it pops against both amber and grey
+        if (prog > 0.001) {
           const px = Math.round(playX);
-          ctx.globalAlpha = 0.4;
-          ctx.fillStyle = '#ffcc44';
-          ctx.fillRect(px - 3, 0, 6, H);
-          ctx.globalAlpha = 1;
-          ctx.fillStyle = '#ffe566';
+          ctx.save();
+          // Dark shadow for contrast
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur = 4;
+          // Bright white line
+          ctx.fillStyle = '#ffffff';
           ctx.fillRect(px - 1, 0, 2, H);
-          ctx.beginPath(); ctx.arc(px, 2, 5, 0, Math.PI*2); ctx.fill();
+          // Amber top handle
+          ctx.shadowColor = 'rgba(232,160,32,0.9)';
+          ctx.shadowBlur = 8;
+          ctx.fillStyle = '#ffcc44';
+          ctx.beginPath();
+          ctx.arc(px, 3, 5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
         }
       }
+
       rafRef.current = requestAnimationFrame(draw);
     }
+
     draw();
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
   }, [notes, duration]);
@@ -227,22 +248,17 @@ export default function Player() {
         .note-bar{background:var(--surf);border:1px solid var(--border2);border-radius:12px;padding:16px;}
         .note-bar-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;font-size:11px;color:var(--t2);}
         .ts-badge{padding:3px 10px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);border-radius:6px;font-size:11px;color:var(--amber);font-weight:500;}
-        textarea{width:100%;background:var(--bg);border:1.5px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--fm);font-size:12px;resize:none;outline:none;min-height:64px;transition:border-color .15s;}
-        textarea:focus{border-color:var(--amber);}
+        textarea{width:100%;background:var(--bg);border:1.5px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--fm);font-size:12px;resize:none;outline:none;min-height:64px;transition:border-color .15s;} textarea:focus{border-color:var(--amber);}
         .note-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px;}
-        .btn-ghost{font-family:var(--fm);font-size:11px;padding:7px 14px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;transition:all .15s;}
-        .btn-ghost:hover{color:var(--text);border-color:var(--t2);}
-        .btn-amber{font-family:var(--fm);font-size:11px;font-weight:500;padding:7px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;transition:opacity .15s;}
-        .btn-amber:hover{opacity:.88;} .btn-amber:disabled{opacity:.35;pointer-events:none;}
+        .btn-ghost{font-family:var(--fm);font-size:11px;padding:7px 14px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;transition:all .15s;} .btn-ghost:hover{color:var(--text);border-color:var(--t2);}
+        .btn-amber{font-family:var(--fm);font-size:11px;font-weight:500;padding:7px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;transition:opacity .15s;} .btn-amber:hover{opacity:.88;} .btn-amber:disabled{opacity:.35;pointer-events:none;}
         .panel-header{padding:14px 16px;border-bottom:1px solid var(--border);}
         .panel-title{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);font-weight:500;}
         .panel-body{flex:1;overflow-y:auto;}
-        .note-item{padding:14px 16px;border-bottom:1px solid var(--border);transition:background .15s;}
-        .note-item:hover{background:var(--surf2);} .note-item:last-child{border-bottom:none;}
+        .note-item{padding:14px 16px;border-bottom:1px solid var(--border);transition:background .15s;} .note-item:hover{background:var(--surf2);} .note-item:last-child{border-bottom:none;}
         .note-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
         .note-author{font-size:11px;color:var(--text);font-weight:500;}
-        .note-ts{font-size:10px;padding:2px 8px;background:var(--aglow);border:1px solid rgba(232,160,32,.2);color:var(--amber);border-radius:4px;cursor:pointer;transition:background .15s;}
-        .note-ts:hover{background:var(--aglow2);}
+        .note-ts{font-size:10px;padding:2px 8px;background:var(--aglow);border:1px solid rgba(232,160,32,.2);color:var(--amber);border-radius:4px;cursor:pointer;transition:background .15s;} .note-ts:hover{background:var(--aglow2);}
         .note-date{font-size:10px;color:var(--t3);margin-left:auto;}
         .note-body{font-size:12px;color:var(--t2);line-height:1.6;}
         .empty-notes{text-align:center;padding:48px 16px;color:var(--t3);font-size:11px;line-height:1.8;}
@@ -262,21 +278,13 @@ export default function Player() {
           {tracks.length > 1 && (
             <div className="tabs-row" style={{ marginBottom:16 }}>
               <span className="tabs-label">Track</span>
-              {tracks.map(t => (
-                <button key={t.id} className={`tab-btn ${activeTrack?.id===t.id?'active':''}`}
-                  title={t.title} onClick={() => selectTrack(t)}>{t.title}</button>
-              ))}
+              {tracks.map(t => (<button key={t.id} className={`tab-btn ${activeTrack?.id===t.id?'active':''}`} title={t.title} onClick={() => selectTrack(t)}>{t.title}</button>))}
             </div>
           )}
           {revisions.length > 1 && (
             <div className="tabs-row" style={{ marginBottom:20 }}>
               <span className="tabs-label">Version</span>
-              {revisions.map((rev, i) => (
-                <button key={rev.id} className={`tab-btn ${activeRevision?.id===rev.id?'active':''}`}
-                  onClick={() => selectRevision(rev)}>
-                  {rev.label || `v${rev.version_number || i+1}`}
-                </button>
-              ))}
+              {revisions.map((rev, i) => (<button key={rev.id} className={`tab-btn ${activeRevision?.id===rev.id?'active':''}`} onClick={() => selectRevision(rev)}>{rev.label || `v${rev.version_number || i+1}`}</button>))}
             </div>
           )}
           <div className="player-box">
@@ -320,11 +328,7 @@ export default function Player() {
               <div key={n.id} className="note-item">
                 <div className="note-header">
                   <span className="note-author">{n.author_name || 'Anonymous'}</span>
-                  {n.timestamp_sec != null && (
-                    <span className="note-ts" onClick={() => {
-                      if (audioRef.current && duration) { audioRef.current.currentTime = n.timestamp_sec; setCurrentTime(n.timestamp_sec); setPinnedTime(n.timestamp_sec); }
-                    }}>{n.timestamp_label || fmt(n.timestamp_sec)}</span>
-                  )}
+                  {n.timestamp_sec != null && (<span className="note-ts" onClick={() => { if (audioRef.current && duration) { audioRef.current.currentTime = n.timestamp_sec; setCurrentTime(n.timestamp_sec); setPinnedTime(n.timestamp_sec); } }}>{n.timestamp_label || fmt(n.timestamp_sec)}</span>)}
                   <span className="note-date">{new Date(n.created_at).toLocaleDateString()}</span>
                 </div>
                 <div className="note-body">{n.body}</div>
@@ -341,4 +345,4 @@ export default function Player() {
       )}
     </>
   );
-}
+            }
