@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { sb } from '@/lib/supabase';
 
 function fmt(s) {
@@ -7,26 +7,27 @@ function fmt(s) {
   return Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
 }
 
-function fallbackPeaks(n = 200) {
-  const p = []; let s = 0xDEADBEEF;
-  for (let i = 0; i < n; i++) {
-    s ^= s << 13; s ^= s >> 17; s ^= s << 5;
-    const env = Math.sin(i/n * Math.PI) * 0.7 + 0.3;
-    p.push(Math.max(0.04, Math.min(0.96, env * (0.4 + (s>>>0)/0xFFFFFFFF * 0.6))));
+// Fixed seed — computed once at module level, never changes
+const FALLBACK_PEAKS = (() => {
+  const p = []; let s = 0x12345678;
+  for (let i = 0; i < 200; i++) {
+    s ^= s << 13; s ^= s >> 17; s ^= s << 5; s >>>= 0;
+    const env = Math.sin(i / 200 * Math.PI) * 0.6 + 0.35;
+    p.push(Math.max(0.05, Math.min(0.95, env * (0.45 + s / 0xFFFFFFFF * 0.55))));
   }
   return p;
-}
+})();
 
 function Waveform({ peaks, progress, notes, duration, onSeek }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const progressRef = useRef(progress);
-  const data = (peaks && peaks.length > 4) ? peaks : fallbackPeaks();
-
-  // Keep progress ref in sync so the RAF loop always has latest value
   useEffect(() => { progressRef.current = progress; }, [progress]);
 
-  // Setup: draw static waveform to an offscreen canvas, then animate on top
+  // Stable peaks ref — only updates when real peaks arrive, never falls back to random
+  const stablePeaks = useRef(FALLBACK_PEAKS);
+  if (peaks && peaks.length > 4) stablePeaks.current = peaks;
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -42,92 +43,82 @@ function Waveform({ peaks, progress, notes, duration, onSeek }) {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
 
+    const data = stablePeaks.current;
     const BAR = 2, GAP = 1, STEP = BAR + GAP;
     const numBars = Math.floor(W / STEP);
     const cy = H / 2;
 
-    // Pre-compute bar heights
-    const heights = Array.from({ length: numBars }, (_, i) => {
-      const pi = Math.floor((i / numBars) * data.length);
-      const amp = data[Math.min(pi, data.length - 1)];
-      return Math.max(2, amp * (cy - 6));
-    });
+    // Pre-compute heights once
+    const heights = new Float32Array(numBars);
+    for (let i = 0; i < numBars; i++) {
+      const pi = Math.floor(i / numBars * data.length);
+      heights[i] = Math.max(2, data[Math.min(pi, data.length - 1)] * (cy - 6));
+    }
+
+    // Pre-compute gradients once per setup
+    const greyGrads = [];
+    const amberGrads = [];
+    for (let i = 0; i < numBars; i++) {
+      const h = heights[i];
+      const gg = ctx.createLinearGradient(0, cy - h, 0, cy + h);
+      gg.addColorStop(0,   'rgba(255,255,255,0.20)');
+      gg.addColorStop(0.5, 'rgba(255,255,255,0.09)');
+      gg.addColorStop(1,   'rgba(255,255,255,0.02)');
+      greyGrads.push(gg);
+
+      const ag = ctx.createLinearGradient(0, cy - h, 0, cy + h);
+      ag.addColorStop(0,   'rgba(232,160,32,0.92)');
+      ag.addColorStop(0.5, 'rgba(232,160,32,0.50)');
+      ag.addColorStop(1,   'rgba(232,160,32,0.10)');
+      amberGrads.push(ag);
+    }
+
+    let lastCutBar = -1;
 
     function draw() {
       const prog = Math.max(0, Math.min(1, progressRef.current || 0));
+      const cutBar = Math.floor(prog * numBars);
       const playX = prog * W;
 
-      ctx.clearRect(0, 0, W, H);
+      // Only redraw if the cut position actually changed
+      if (cutBar !== lastCutBar) {
+        lastCutBar = cutBar;
+        ctx.clearRect(0, 0, W, H);
 
-      // Draw all bars — amber if before playhead, grey if after
-      for (let i = 0; i < numBars; i++) {
-        const x = i * STEP;
-        const h = heights[i];
-        const played = x < playX;
-
-        const g = ctx.createLinearGradient(0, cy - h, 0, cy + h);
-        if (played) {
-          g.addColorStop(0,   'rgba(232,160,32,0.95)');
-          g.addColorStop(0.5, 'rgba(232,160,32,0.55)');
-          g.addColorStop(1,   'rgba(232,160,32,0.12)');
-        } else {
-          g.addColorStop(0,   'rgba(255,255,255,0.22)');
-          g.addColorStop(0.5, 'rgba(255,255,255,0.10)');
-          g.addColorStop(1,   'rgba(255,255,255,0.03)');
+        // Waveform bars
+        for (let i = 0; i < numBars; i++) {
+          ctx.fillStyle = i < cutBar ? amberGrads[i] : greyGrads[i];
+          ctx.fillRect(i * STEP, cy - heights[i], BAR, heights[i] * 2);
         }
-        ctx.fillStyle = g;
-        ctx.fillRect(x, cy - h, BAR, h * 2);
-      }
 
-      // Note markers
-      if (notes && duration > 0) {
-        notes.forEach(n => {
-          if (n.timestamp_sec == null || n.timestamp_sec > duration) return;
-          const x = (n.timestamp_sec / duration) * W;
-          // Dashed stem
+        // Note markers — dashed stem + dots top/bottom
+        if (notes && notes.length && duration > 0) {
+          notes.forEach(n => {
+            if (n.timestamp_sec == null || n.timestamp_sec > duration) return;
+            const x = (n.timestamp_sec / duration) * W;
+            ctx.save();
+            ctx.strokeStyle = 'rgba(232,160,32,0.55)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([2, 3]);
+            ctx.beginPath(); ctx.moveTo(x, 4); ctx.lineTo(x, H - 4); ctx.stroke();
+            ctx.restore();
+            ctx.fillStyle = '#e8a020';
+            ctx.beginPath(); ctx.arc(x, 5, 3.5, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(x, H - 5, 3.5, 0, Math.PI * 2); ctx.fill();
+          });
+        }
+
+        // Playhead line + glowing handle
+        if (prog > 0.001) {
+          const px = Math.round(playX);
           ctx.save();
-          ctx.strokeStyle = 'rgba(232,160,32,0.6)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([2, 3]);
-          ctx.beginPath();
-          ctx.moveTo(x, 4);
-          ctx.lineTo(x, H - 4);
-          ctx.stroke();
+          ctx.shadowColor = 'rgba(232,160,32,0.9)';
+          ctx.shadowBlur = 10;
+          ctx.fillStyle = '#ffe080';
+          ctx.fillRect(px - 1, 0, 2, H);
+          ctx.beginPath(); ctx.arc(px, 0, 5, 0, Math.PI * 2); ctx.fill();
           ctx.restore();
-          // Top dot
-          ctx.fillStyle = '#e8a020';
-          ctx.beginPath();
-          ctx.arc(x, 5, 3.5, 0, Math.PI * 2);
-          ctx.fill();
-          // Bottom dot
-          ctx.beginPath();
-          ctx.arc(x, H - 5, 3.5, 0, Math.PI * 2);
-          ctx.fill();
-        });
-      }
-
-      // Playhead line — bright amber with glow
-      if (prog > 0) {
-        // Glow layer
-        ctx.save();
-        ctx.shadowColor = 'rgba(232,160,32,0.9)';
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = '#e8a020';
-        ctx.fillRect(playX - 1, 0, 2, H);
-        ctx.restore();
-
-        // Crisp line on top
-        ctx.fillStyle = '#ffbe4d';
-        ctx.fillRect(playX - 1, 0, 2, H);
-
-        // Handle circle at top
-        ctx.fillStyle = '#ffbe4d';
-        ctx.shadowColor = 'rgba(232,160,32,0.9)';
-        ctx.shadowBlur = 6;
-        ctx.beginPath();
-        ctx.arc(playX, 0, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        }
       }
 
       rafRef.current = requestAnimationFrame(draw);
@@ -135,17 +126,14 @@ function Waveform({ peaks, progress, notes, duration, onSeek }) {
 
     draw();
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [data, notes, duration]); // Only reset canvas on data changes, RAF handles progress
-
-  function handleClick(e) {
-    if (!onSeek) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    onSeek(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
-  }
+  }, [notes, duration]); // peaks handled via stable ref — no re-run on seek/progress
 
   return (
-    <div onClick={handleClick}
-      style={{ position:'relative', width:'100%', height:96, cursor:'crosshair', userSelect:'none' }}>
+    <div onClick={e => {
+      if (!onSeek) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      onSeek(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+    }} style={{ width:'100%', height:96, cursor:'crosshair', userSelect:'none' }}>
       <canvas ref={canvasRef} style={{ display:'block', width:'100%', height:96 }} />
     </div>
   );
@@ -189,7 +177,7 @@ export default function Player() {
     if (trackList.length > 0) {
       const first = trackList[0];
       setActiveTrack(first);
-      const rev = first.revisions?.find(r => r.is_active) || first.revisions?.[first.revisions.length - 1] || null;
+      const rev = first.revisions?.find(r => r.is_active) || first.revisions?.[first.revisions.length-1] || null;
       setActiveRevision(rev);
       loadNotes(first.id);
     }
@@ -202,18 +190,16 @@ export default function Player() {
 
   function selectTrack(t) {
     setActiveTrack(t);
-    setPlaying(false);
-    setCurrentTime(0); setPinnedTime(0);
+    setPlaying(false); setCurrentTime(0); setPinnedTime(0);
     if (audioRef.current) audioRef.current.pause();
-    const rev = t.revisions?.find(r => r.is_active) || t.revisions?.[t.revisions.length - 1] || null;
+    const rev = t.revisions?.find(r => r.is_active) || t.revisions?.[t.revisions.length-1] || null;
     setActiveRevision(rev);
     loadNotes(t.id);
   }
 
   function selectRevision(rev) {
     setActiveRevision(rev);
-    setPlaying(false);
-    setCurrentTime(0); setPinnedTime(0);
+    setPlaying(false); setCurrentTime(0); setPinnedTime(0);
     if (audioRef.current) audioRef.current.pause();
   }
 
@@ -353,7 +339,6 @@ export default function Player() {
                 <button key={rev.id} className={`tab-btn ${activeRevision?.id===rev.id?'active':''}`}
                   onClick={() => selectRevision(rev)}>
                   {rev.label || `v${rev.version_number || i+1}`}
-                  {rev.is_active && <span style={{ marginLeft:4, fontSize:8 }}>●</span>}
                 </button>
               ))}
             </div>
@@ -374,7 +359,6 @@ export default function Player() {
                 <span className="time-label">{fmt(duration)}</span>
               </div>
             </div>
-
             <div className="transport">
               <button className="play-btn" onClick={togglePlay} disabled={!audioUrl}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="#000">
@@ -389,9 +373,7 @@ export default function Player() {
                 <span> / {fmt(duration)}</span>
               </div>
               {activeRevision && (
-                <span className="rev-badge">
-                  {activeRevision.label || `v${activeRevision.version_number || 1}`}
-                </span>
+                <span className="rev-badge">{activeRevision.label || `v${activeRevision.version_number || 1}`}</span>
               )}
             </div>
           </div>
@@ -454,4 +436,4 @@ export default function Player() {
       )}
     </>
   );
-}
+                }
