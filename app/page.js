@@ -14,8 +14,7 @@ const STABLE_PEAKS = (() => {
 function WaveformCanvas({ peaks }) {
   const ref = useRef(null);
   useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
+    const canvas = ref.current; if (!canvas) return;
     const data = (peaks && peaks.length) ? peaks : STABLE_PEAKS;
     const W = canvas.offsetWidth || 268, H = 48;
     canvas.width = W * devicePixelRatio; canvas.height = H * devicePixelRatio;
@@ -35,8 +34,13 @@ function WaveformCanvas({ peaks }) {
 }
 
 function bytesToSize(b) {
-  if (b < 1024*1024) return (b/1024).toFixed(0) + ' KB';
-  return (b/1024/1024).toFixed(1) + ' MB';
+  if (b < 1024*1024) return (b/1024).toFixed(0)+' KB';
+  return (b/1024/1024).toFixed(1)+' MB';
+}
+
+function sanitizeFilename(name) {
+  // Replace spaces and special chars with underscores, preserve extension
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 export default function Dashboard() {
@@ -46,7 +50,6 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [projName, setProjName] = useState('');
   const [projArtist, setProjArtist] = useState('');
-  // tracks = [{file, name}]
   const [tracks, setTracks] = useState([]);
   const [creating, setCreating] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
@@ -63,7 +66,7 @@ export default function Dashboard() {
   async function loadProjects() {
     setLoading(true);
     const { data, error } = await sb.from('projects')
-      .select('*, tracks(id, updated_at)')
+      .select('*, tracks(id,updated_at)')
       .order('updated_at', { ascending: false });
     if (!error) setProjects(data || []);
     setLoading(false);
@@ -76,19 +79,17 @@ export default function Dashboard() {
     if (!audioFiles.length) return;
     setTracks(prev => {
       const existing = new Set(prev.map(t => t.file.name));
-      const newOnes = audioFiles
-        .filter(f => !existing.has(f.name))
+      const newOnes = audioFiles.filter(f => !existing.has(f.name))
         .map(f => ({ file: f, name: f.name.replace(/\.[^.]+$/, '') }));
       return [...prev, ...newOnes];
     });
   }
 
   function updateTrackName(idx, name) {
-    setTracks(prev => prev.map((t, i) => i===idx ? {...t, name} : t));
+    setTracks(prev => prev.map((t,i) => i===idx ? {...t,name} : t));
   }
-
   function removeTrack(idx) {
-    setTracks(prev => prev.filter((_, i) => i!==idx));
+    setTracks(prev => prev.filter((_,i) => i!==idx));
   }
 
   async function createProject() {
@@ -102,11 +103,13 @@ export default function Dashboard() {
 
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks[i];
-        setStatusMsg(`Uploading ${i+1}/${tracks.length}: ${t.name}`);
+        setStatusMsg('Uploading ' + (i+1) + '/' + tracks.length + ': ' + t.name);
+        // Sanitize filename — replace spaces/special chars with underscores
+        const safeName = sanitizeFilename(t.file.name);
         const r = await fetch(UPLOAD_WORKER_URL, {
           method: 'POST',
           headers: {
-            'X-File-Name': t.file.name,
+            'X-File-Name': safeName,
             'X-Project-Id': proj.id,
             'Content-Type': t.file.type || 'audio/wav'
           },
@@ -124,7 +127,6 @@ export default function Dashboard() {
           });
         }
       }
-
       closeModal();
       await loadProjects();
     } catch (e) { setStatusMsg('Error: ' + e.message); setCreating(false); }
@@ -137,10 +139,8 @@ export default function Dashboard() {
 
   function handleDrop(e) {
     e.preventDefault(); e.stopPropagation();
-    setDragging(false);
-    addFiles(e.dataTransfer?.files || []);
+    setDragging(false); addFiles(e.dataTransfer?.files || []);
   }
-
   function handleDragOver(e) { e.preventDefault(); e.stopPropagation(); setDragging(true); }
   function handleDragLeave(e) { e.preventDefault(); setDragging(false); }
 
@@ -154,8 +154,8 @@ export default function Dashboard() {
         html,body{background:var(--bg);color:var(--text);font-family:var(--fm);min-height:100%;}
         .app{max-width:1100px;margin:0 auto;padding:0 24px;min-height:100vh;display:flex;flex-direction:column;}
         header{display:flex;align-items:center;justify-content:space-between;padding:20px 0 18px;border-bottom:1px solid var(--border);}
-        .logo{font-family:var(--fh);font-size:22px;letter-spacing:-.01em;} .logo em{color:var(--amber);font-style:normal;}
-        .avatar{width:32px;height:32px;border-radius:50%;background:var(--surf3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--t2);cursor:pointer;transition:background .15s;} .avatar:hover{background:var(--surf2);}
+        .logo{font-family:var(--fh);font-size:22px;} .logo em{color:var(--amber);font-style:normal;}
+        .avatar{width:32px;height:32px;border-radius:50%;background:var(--surf3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--t2);cursor:pointer;} .avatar:hover{background:var(--surf2);}
         .hero{padding:52px 0 40px;display:flex;align-items:flex-end;justify-content:space-between;gap:20px;border-bottom:1px solid var(--border);}
         .hero-title{font-family:var(--fh);font-size:clamp(32px,5vw,52px);line-height:1.05;letter-spacing:-.02em;margin-bottom:10px;} .hero-title em{font-style:italic;color:var(--amber);}
         .hero-sub{font-size:12px;color:var(--t2);line-height:1.6;max-width:420px;}
@@ -178,15 +178,14 @@ export default function Dashboard() {
         .field input{width:100%;background:var(--surf2);border:1.5px solid var(--border2);border-radius:10px;color:var(--text);font-family:var(--fm);font-size:14px;padding:12px 14px;outline:none;transition:border-color .15s;} .field input:focus{border-color:var(--amber);}
         .dropzone{border:2px dashed var(--border2);border-radius:12px;background:var(--surf2);padding:28px 20px;text-align:center;cursor:pointer;font-size:12px;color:var(--t2);transition:all .2s;}
         .dropzone:hover,.dropzone.over{border-color:var(--amber);background:var(--aglow);color:var(--amber);}
-        .dropzone.has-files{border-color:var(--amber);border-style:dashed;background:var(--aglow);}
+        .dropzone.has-files{border-color:var(--amber);background:var(--aglow);}
         .dropzone-icon{font-size:28px;margin-bottom:8px;}
         .tracks-list{margin-top:16px;display:flex;flex-direction:column;gap:8px;}
         .track-row{display:flex;align-items:center;gap:10px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;animation:cardIn .2s ease both;}
         .track-num{font-size:11px;color:var(--t3);min-width:18px;text-align:right;}
         .track-input{flex:1;background:transparent;border:none;border-bottom:1.5px solid var(--border2);color:var(--text);font-family:var(--fm);font-size:13px;padding:4px 0;outline:none;transition:border-color .15s;} .track-input:focus{border-color:var(--amber);}
         .track-meta{font-size:10px;color:var(--t3);white-space:nowrap;}
-        .track-remove{width:22px;height:22px;border-radius:50%;border:1px solid var(--border2);background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;flex-shrink:0;transition:all .15s;} .track-remove:hover{border-color:#f05050;color:#f05050;}
-        .add-more{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--t2);cursor:pointer;padding:8px;border-radius:8px;border:1px dashed var(--border2);justify-content:center;transition:all .15s;margin-top:4px;} .add-more:hover{border-color:var(--amber);color:var(--amber);}
+        .track-remove{width:22px;height:22px;border-radius:50%;border:1px solid var(--border2);background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;transition:all .15s;} .track-remove:hover{border-color:#f05050;color:#f05050;}
         .modal-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:24px;border-top:1px solid var(--border);padding-top:20px;}
         .status-msg{font-size:11px;color:var(--t2);}
         .btn-cancel{font-family:var(--fm);font-size:13px;padding:11px 18px;border-radius:9px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;}
@@ -199,9 +198,8 @@ export default function Dashboard() {
           <div className="logo">maastr<em>.</em></div>
           <div style={{ display:'flex', alignItems:'center', gap:12 }}>
             <span style={{ fontSize:11, color:'var(--t3)' }}>{user?.email}</span>
-            <div className="avatar" title="Sign out"
-              onClick={() => sb.auth.signOut().then(() => window.location.href = '/auth')}>
-              {user?.email?.[0]?.toUpperCase() || '?'}
+            <div className="avatar" onClick={() => sb.auth.signOut().then(() => window.location.href='/auth')}>
+              {user?.email?.[0]?.toUpperCase()||'?'}
             </div>
           </div>
         </header>
@@ -214,7 +212,7 @@ export default function Dashboard() {
           </div>
           <div className="hero-stats">
             <div className="stat"><div className="stat-num">{projects.length}</div><div className="stat-label">Projects</div></div>
-            <div className="stat-div" />
+            <div className="stat-div"/>
             <div className="stat"><div className="stat-num">{projects.reduce((t,p)=>t+(p.tracks?.length||0),0)}</div><div className="stat-label">Tracks</div></div>
           </div>
         </div>
@@ -228,9 +226,8 @@ export default function Dashboard() {
         </div>
 
         <div className="grid">
-          {loading ? (
-            <div className="empty"><div className="empty-title">Loading…</div></div>
-          ) : projects.length === 0 ? (
+          {loading ? <div className="empty"><div className="empty-title">Loading…</div></div>
+          : projects.length === 0 ? (
             <div className="empty">
               <div className="empty-title">No projects yet.</div>
               <p style={{ fontSize:12, marginBottom:20 }}>Create your first mastering project.</p>
@@ -238,16 +235,16 @@ export default function Dashboard() {
             </div>
           ) : projects.map((p, idx) => {
             const date = new Date(p.updated_at || p.created_at);
-            const dateStr = months[date.getMonth()] + ' ' + date.getDate() + ', ' + date.getFullYear();
+            const dateStr = months[date.getMonth()]+' '+date.getDate()+', '+date.getFullYear();
             const tc = p.tracks?.length || 0;
             return (
               <div key={p.id} className="card" style={{ animationDelay: idx*60+'ms' }}
-                onClick={() => window.location.href = '/player?project=' + p.id}>
+                onClick={() => window.location.href='/player?project='+p.id}>
                 <div className="card-header">
                   <div className="card-title">{p.title}</div>
                   <div className="card-artist">{p.artist}</div>
                 </div>
-                <div className="card-wave"><WaveformCanvas peaks={p.peaks} /></div>
+                <div className="card-wave"><WaveformCanvas peaks={p.peaks}/></div>
                 <div className="card-meta">
                   <span>{tc} track{tc!==1?'s':''}</span>
                   <span>{dateStr}</span>
@@ -262,60 +259,50 @@ export default function Dashboard() {
         <div className="modal-bg" onClick={e => e.target===e.currentTarget && !creating && closeModal()}>
           <div className="modal">
             <div className="modal-title">New Project</div>
-
             <div className="field">
               <label>Project Name</label>
-              <input value={projName} onChange={e => setProjName(e.target.value)} placeholder="Summer EP 2026" autoFocus />
+              <input value={projName} onChange={e => setProjName(e.target.value)} placeholder="Summer EP 2026" autoFocus/>
             </div>
             <div className="field">
               <label>Artist / Band</label>
-              <input value={projArtist} onChange={e => setProjArtist(e.target.value)} placeholder="Artist name" />
+              <input value={projArtist} onChange={e => setProjArtist(e.target.value)} placeholder="Artist name"/>
             </div>
-
             <div className="field">
               <label>Tracks ({tracks.length})</label>
-              <div
-                className={`dropzone ${dragging?'over':''} ${tracks.length>0?'has-files':''}`}
+              <div className={`dropzone ${dragging?'over':''} ${tracks.length>0?'has-files':''}`}
                 onDragOver={handleDragOver} onDragEnter={handleDragOver}
                 onDragLeave={handleDragLeave} onDrop={handleDrop}
                 onClick={() => document.getElementById('file-upload').click()}>
-                <div className="dropzone-icon">{tracks.length > 0 ? '🎵' : '🎵'}</div>
-                {tracks.length === 0
-                  ? <><strong>Drop WAV / MP3 files here</strong><br /><span style={{ fontSize:11, opacity:.6 }}>Drag multiple files at once — or click to browse</span></>
-                  : <><strong style={{ color:'var(--amber)' }}>{tracks.length} file{tracks.length!==1?'s':''} added</strong><br /><span style={{ fontSize:11, opacity:.6 }}>Drop more to add — or click to browse</span></>
+                <div className="dropzone-icon">🎵</div>
+                {tracks.length===0
+                  ? <><strong>Drop WAV / MP3 files here</strong><br/><span style={{ fontSize:11, opacity:.6 }}>Drag multiple files at once — or click to browse</span></>
+                  : <><strong style={{ color:'var(--amber)' }}>{tracks.length} file{tracks.length!==1?'s':''} added</strong><br/><span style={{ fontSize:11, opacity:.6 }}>Drop more to add — or click to browse</span></>
                 }
                 <input id="file-upload" type="file" accept=".wav,.mp3,.aiff,.aif,.flac,.m4a,audio/*"
                   multiple style={{ display:'none' }}
-                  onChange={e => { addFiles(e.target.files); e.target.value=''; }} />
+                  onChange={e => { addFiles(e.target.files); e.target.value=''; }}/>
               </div>
-
               {tracks.length > 0 && (
                 <div className="tracks-list">
-                  {tracks.map((t, i) => (
+                  {tracks.map((t,i) => (
                     <div key={i} className="track-row" style={{ animationDelay: i*40+'ms' }}>
                       <span className="track-num">{i+1}</span>
-                      <input
-                        className="track-input"
-                        value={t.name}
+                      <input className="track-input" value={t.name}
                         onChange={e => updateTrackName(i, e.target.value)}
-                        placeholder={`Track ${i+1}`}
-                      />
+                        placeholder={`Track ${i+1}`}/>
                       <span className="track-meta">{bytesToSize(t.file.size)}</span>
-                      <button className="track-remove" onClick={() => removeTrack(i)} title="Remove">
-                        ×
-                      </button>
+                      <button className="track-remove" onClick={() => removeTrack(i)}>×</button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-
             <div className="modal-footer">
               <span className="status-msg">{statusMsg}</span>
               <div style={{ display:'flex', gap:10 }}>
                 <button className="btn-cancel" disabled={creating} onClick={closeModal}>Cancel</button>
                 <button className="btn-create" disabled={!projName||tracks.length===0||creating} onClick={createProject}>
-                  {creating ? statusMsg || 'Creating…' : `Create Project (${tracks.length} track${tracks.length!==1?'s':''})`}
+                  {creating ? (statusMsg||'Creating…') : `Create Project (${tracks.length} track${tracks.length!==1?'s':''})`}
                 </button>
               </div>
             </div>
