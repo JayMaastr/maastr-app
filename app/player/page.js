@@ -15,12 +15,9 @@ function Waveform({peaks,progress,notes,duration,onSeek}){const canvasRef=useRef
 function FixedDropdown({anchorRef,open,onClose,children}){const [pos,setPos]=useState({top:0,right:0});function recalc(){if(!anchorRef.current)return;const rect=anchorRef.current.getBoundingClientRect();setPos({top:rect.bottom+4,right:window.innerWidth-rect.right});}useEffect(()=>{if(!open)return;recalc();window.addEventListener('scroll',recalc,true);return()=>{window.removeEventListener('scroll',recalc,true);};},[open]);if(!open)return null;return(<><div style={{position:'fixed',inset:0,zIndex:998,background:'transparent'}} onClick={onClose}/><div style={{position:'fixed',top:pos.top,right:pos.right,zIndex:999,background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:10,minWidth:176,boxShadow:'0 8px 40px rgba(0,0,0,.6)',overflow:'hidden'}}>{children}</div></>);}
 function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const [hov,setHov]=useState(null);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span>← Darker</span><span style={{margin:'0 auto',color:'var(--amber)',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter →</span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);return(<button key={i} className={'tgm-cell'+(i===value?' active':'')+(i===4?' center':'')+(used?' used':'')} onMouseEnter={()=>!used&&setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}><span>{t.short}</span>{used&&<span className="tgm-used-dot">✓</span>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'var(--t3)',marginTop:6}}>✓ Already mastered — greyed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
 
+/* TrackDetail: waveform TOP, notes middle, compose above transport, transport BOTTOM */
 function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,onRevisionSelect}){
-  const [noteText,setNoteText]=useState('');
-  const [posting,setPosting]=useState(false);
-  const [lockedTime,setLockedTime]=useState(currentTime);
-  const [revSwitcherOpen,setRevSwitcherOpen]=useState(false);
-  const inputRef=useRef(null);
+  const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [lockedTime,setLockedTime]=useState(currentTime);const [revSwitcherOpen,setRevSwitcherOpen]=useState(false);const inputRef=useRef(null);
   const revisions=track?[...(track.revisions||[])].sort((a,b)=>(b.version_number||0)-(a.version_number||0)):[];
   const displayRev=activeRevision||(revisions.find(r=>r.is_active)||revisions[0]||null);
   function focusNote(){setLockedTime(currentTime);setTimeout(()=>inputRef.current?.focus(),60);}
@@ -32,101 +29,54 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
         <button className="td-close" onClick={onClose}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         <div className="td-title-block">
           <div className="td-track-name">{track?.title}</div>
-          {displayRev&&<div className="td-rev-row">
-            <span className="td-rev-badge">{displayRev.label||'v1'}</span>
-            {displayRev.tone_label&&<span className="td-tone-badge">{displayRev.tone_label}</span>}
-            {revisions.length>1&&<button className="td-rev-switch" onClick={()=>setRevSwitcherOpen(v=>!v)}>{revisions.length} versions ▾</button>}
-          </div>}
+          {displayRev&&<div className="td-rev-row"><span className="td-rev-badge">{displayRev.label||'v1'}</span>{displayRev.tone_label&&<span className="td-tone-badge">{displayRev.tone_label}</span>}{revisions.length>1&&<button className="td-rev-switch" onClick={()=>setRevSwitcherOpen(v=>!v)}>{revisions.length} versions ▾</button>}</div>}
         </div>
       </div>
       {revSwitcherOpen&&revisions.length>1&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
-      {/* Waveform + timecodes */}
+      {/* WAVEFORM — top */}
       <div className="td-wave-wrap">
         <Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/>
         <div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div>
       </div>
-      {/* Full transport bar — mirrors the bottom bar on main page */}
+      {/* NOTES — scrollable middle */}
+      <div className="td-notes-scroll">
+        {notes.length>0?(<><div className="td-notes-label">NOTES{displayRev&&<span className="td-notes-rev"> — {displayRev.label||'v1'}</span>}</div>{notes.map(n=>(<div key={n.id} className="td-note-item"><div className="td-note-meta"><span className="td-note-author">{n.author_name||'You'}</span>{n.timestamp_sec!=null&&(<button className="td-note-pill" onClick={()=>onSeekToTime(n.timestamp_sec)}><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>{n.timestamp_label||fmt(n.timestamp_sec)}</button>)}</div><div className="td-note-body">{n.body}</div><span className="td-note-date">{new Date(n.created_at).toLocaleDateString()}</span></div>))}</>):(<div className="td-notes-empty">No notes yet — add the first one below</div>)}
+      </div>
+      {/* COMPOSE — above transport */}
+      <div className="td-compose">
+        {noteText?(<><textarea ref={inputRef} className="td-compose-textarea" value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder={"Note at "+fmt(lockedTime)+"…"} rows={2} onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))handlePost();}} autoFocus/><div className="td-compose-actions"><span className="td-compose-ts">{fmt(lockedTime)}</span><button className="td-compose-cancel" onClick={()=>setNoteText('')}>Cancel</button><button className="td-compose-post" onClick={handlePost} disabled={posting}>{posting?'Posting…':'Post'}</button></div></>):(<button className="td-compose-trigger" onClick={focusNote}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add note at <strong>{fmt(currentTime)}</strong></button>)}
+      </div>
+      {/* TRANSPORT — BOTTOM, same layout as main page bar */}
       <div className="td-modal-bar">
         <div className="td-modal-transport">
           <div className="td-transport-left">
             <button className="ps-track-btn" onClick={onPrevTrack} disabled={!canPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,5 9,12 19,19"/><rect x="5" y="5" width="2.5" height="14" rx="1"/></svg></button>
             <button className="ps-skip-btn" onClick={()=>onSkip(-10)} disabled={!duration}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg><span className="ps-skip-label">10</span></button>
           </div>
-          <div className="td-transport-center">
-            <button className="ps-play-btn" onClick={onTogglePlay} disabled={!duration}><svg width="16" height="16" viewBox="0 0 16 16" fill="#000">{isPlaying?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>:<polygon points="3,1 15,8 3,15"/>}</svg></button>
-          </div>
+          <div className="td-transport-center"><button className="ps-play-btn" onClick={onTogglePlay} disabled={!duration}><svg width="16" height="16" viewBox="0 0 16 16" fill="#000">{isPlaying?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>:<polygon points="3,1 15,8 3,15"/>}</svg></button></div>
           <div className="td-transport-right">
             <button className="ps-skip-btn" onClick={()=>onSkip(10)} disabled={!duration}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.95"/></svg><span className="ps-skip-label">10</span></button>
             <button className="ps-track-btn" onClick={onNextTrack} disabled={!canNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,5 15,12 5,19"/><rect x="16.5" y="5" width="2.5" height="14" rx="1"/></svg></button>
           </div>
         </div>
       </div>
-      <div className="td-notes-scroll">
-        {notes.length>0?(<>
-          <div className="td-notes-label">NOTES{displayRev&&<span className="td-notes-rev"> — {displayRev.label||'v1'}</span>}</div>
-          {notes.map(n=>(<div key={n.id} className="td-note-item">
-            <div className="td-note-meta">
-              <span className="td-note-author">{n.author_name||'You'}</span>
-              {n.timestamp_sec!=null&&(<button className="td-note-pill" onClick={()=>onSeekToTime(n.timestamp_sec)}><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>{n.timestamp_label||fmt(n.timestamp_sec)}</button>)}
-            </div>
-            <div className="td-note-body">{n.body}</div>
-            <span className="td-note-date">{new Date(n.created_at).toLocaleDateString()}</span>
-          </div>))}
-        </>):(<div className="td-notes-empty">No notes yet — add the first one below</div>)}
-      </div>
-      <div className="td-compose">
-        {noteText?(<>
-          <textarea ref={inputRef} className="td-compose-textarea" value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder={"Note at "+fmt(lockedTime)+"…"} rows={2} onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))handlePost();}} autoFocus/>
-          <div className="td-compose-actions">
-            <span className="td-compose-ts">{fmt(lockedTime)}</span>
-            <button className="td-compose-cancel" onClick={()=>setNoteText('')}>Cancel</button>
-            <button className="td-compose-post" onClick={handlePost} disabled={posting}>{posting?'Posting…':'Post'}</button>
-          </div>
-        </>):(<button className="td-compose-trigger" onClick={focusNote}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add note at <strong>{fmt(currentTime)}</strong>
-        </button>)}
-      </div>
     </div>
   </>);}
 function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRename,onDeleteTrack,onDeleteRevision,onRerunRevision}){
-  const [menuOpen,setMenuOpen]=useState(false);
-  const [renaming,setRenaming]=useState(false);
-  const [renameVal,setRenameVal]=useState(track.title||'');
-  const menuBtnRef=useRef(null);
-  const revisions=[...(track.revisions||[])].sort((a,b)=>(b.version_number||0)-(a.version_number||0));
-  const revCount=revisions.length;
-  const [revDeleteOpen,setRevDeleteOpen]=useState(false);
-  const [deleteRevStep,setDeleteRevStep]=useState(0);
-  const [deleteRevTarget,setDeleteRevTarget]=useState(null);
+  const [menuOpen,setMenuOpen]=useState(false);const [renaming,setRenaming]=useState(false);const [renameVal,setRenameVal]=useState(track.title||'');const menuBtnRef=useRef(null);
+  const revisions=[...(track.revisions||[])].sort((a,b)=>(b.version_number||0)-(a.version_number||0));const revCount=revisions.length;
+  const [revDeleteOpen,setRevDeleteOpen]=useState(false);const [deleteRevStep,setDeleteRevStep]=useState(0);const [deleteRevTarget,setDeleteRevTarget]=useState(null);
   async function saveRename(){const v=renameVal.trim();if(v&&v!==track.title)await onRename(track.id,v);setRenaming(false);}
   function cancelRename(){setRenameVal(track.title||'');setRenaming(false);}
   return(<div className={'tr-row'+(isActive?' tr-active':'')}>
-    {renaming?(<div className="tr-rename" onClick={e=>e.stopPropagation()}>
-      <input className="tr-rename-input" value={renameVal} autoFocus onChange={e=>setRenameVal(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')saveRename();if(e.key==='Escape')cancelRename();}}/>
-      <button className="tr-rename-save" onClick={saveRename}>Save</button>
-      <button className="tr-rename-cancel" onClick={cancelRename}>Cancel</button>
-    </div>):(<>
+    {renaming?(<div className="tr-rename" onClick={e=>e.stopPropagation()}><input className="tr-rename-input" value={renameVal} autoFocus onChange={e=>setRenameVal(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')saveRename();if(e.key==='Escape')cancelRename();}}/><button className="tr-rename-save" onClick={saveRename}>Save</button><button className="tr-rename-cancel" onClick={cancelRename}>Cancel</button></div>):(<>
       <div className="tr-play-zone" onClick={()=>onPlay(track.id)}>
-        <div className="tr-num-play">
-          {isPlaying?(<svg className="tr-playing-icon" width="14" height="14" viewBox="0 0 14 14" fill="var(--amber)"><rect x="1" y="1" width="4" height="12" rx="1"/><rect x="9" y="1" width="4" height="12" rx="1"/></svg>):(<span className="tr-idx">{idx+1}</span>)}
-        </div>
-        <div className="tr-info">
-          <span className="tr-name">{track.title}</span>
-          <div className="tr-meta">
-            {revCount>0&&<span className="tr-rev">{revCount}v</span>}
-          </div>
-        </div>
+        <div className="tr-num-play">{isPlaying?(<svg className="tr-playing-icon" width="14" height="14" viewBox="0 0 14 14" fill="var(--amber)"><rect x="1" y="1" width="4" height="12" rx="1"/><rect x="9" y="1" width="4" height="12" rx="1"/></svg>):(<span className="tr-idx">{idx+1}</span>)}</div>
+        <div className="tr-info"><span className="tr-name">{track.title}</span><div className="tr-meta">{revCount>0&&<span className="tr-rev">{revCount}v</span>}</div></div>
       </div>
       <div className="tr-actions">
-        <button className="tr-comment-btn" onClick={e=>{e.stopPropagation();onDetail(track);}}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          {noteCount>0&&<span className="tr-note-count">{noteCount}</span>}
-        </button>
-        <div style={{position:'relative'}}>
-          <button ref={menuBtnRef} className="tr-menu-btn" onClick={e=>{e.stopPropagation();setMenuOpen(o=>!o);}}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-          </button>
+        <button className="tr-comment-btn" onClick={e=>{e.stopPropagation();onDetail(track);}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{noteCount>0&&<span className="tr-note-count">{noteCount}</span>}</button>
+        <div style={{position:'relative'}}><button ref={menuBtnRef} className="tr-menu-btn" onClick={e=>{e.stopPropagation();setMenuOpen(o=>!o);}}><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
           <FixedDropdown anchorRef={menuBtnRef} open={menuOpen} onClose={()=>setMenuOpen(false)}>
             <button className="tdrop-item" onClick={()=>{setMenuOpen(false);setRenameVal(track.title||'');setRenaming(true);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Rename Track</button>
             <button className="tdrop-item" onClick={()=>{setMenuOpen(false);onRerunRevision(track);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>Rerun Revision</button>
@@ -146,32 +96,26 @@ export default function Player(){
   const [rerunTrack,setRerunTrack]=useState(null);const [rerunTone,setRerunTone]=useState(null);const [rerunUploading,setRerunUploading]=useState(false);const [rerunStatus,setRerunStatus]=useState('');
   const [deleteTrackConfirm,setDeleteTrackConfirm]=useState(null);
   useEffect(()=>{sb.auth.getSession().then(({data:{session}})=>{if(!session){window.location.href='/auth';return;}setUser(session.user);const pid=new URLSearchParams(window.location.search).get('project');if(!pid){window.location.href='/';return;}loadProject(pid);});},[]);
-  async function loadProject(pid){
-    const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();
-    if(!proj){window.location.href='/';return;}
-    setProject(proj);
-    const {data:tr}=await sb.from('tracks').select('*,revisions(*)').eq('project_id',pid).order('position');
-    const {data:noteCounts}=await sb.from('notes').select('track_id').eq('project_id',pid);
-    const countMap={};
-    (noteCounts||[]).forEach(n=>{countMap[n.track_id]=(countMap[n.track_id]||0)+1;});
-    const tl=(tr||[]).map(t=>({...t,revisions:[...(t.revisions||[])].sort((a,b)=>(a.version_number||0)-(b.version_number||0)),_noteCount:countMap[t.id]||0}));
-    setTracks(tl);
-    if(tl.length>0){const first=tl[0];setActiveTrackId(first.id);const rev=first.revisions?.find(r=>r.is_active)||first.revisions?.[first.revisions.length-1]||null;setActiveRevision(rev);loadNotes(first.id,rev?.id);}
-  }
-  async function loadNotes(trackId,revId){
-    const {data}=await sb.from('notes').select('*').eq('track_id',trackId).order('timestamp_sec');
-    const all=data||[];
-    const filtered=revId?all.filter(n=>n.revision_id===revId||n.revision_id===null):all;
-    setNotes(filtered);
-    setTracks(prev=>prev.map(t=>t.id===trackId?{...t,_noteCount:filtered.length}:t));
-  }
+  async function loadProject(pid){const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();if(!proj){window.location.href='/';return;}setProject(proj);const {data:tr}=await sb.from('tracks').select('*,revisions(*)').eq('project_id',pid).order('position');const {data:noteCounts}=await sb.from('notes').select('track_id').eq('project_id',pid);const countMap={};(noteCounts||[]).forEach(n=>{countMap[n.track_id]=(countMap[n.track_id]||0)+1;});const tl=(tr||[]).map(t=>({...t,revisions:[...(t.revisions||[])].sort((a,b)=>(a.version_number||0)-(b.version_number||0)),_noteCount:countMap[t.id]||0}));setTracks(tl);if(tl.length>0){const first=tl[0];setActiveTrackId(first.id);const rev=first.revisions?.find(r=>r.is_active)||first.revisions?.[first.revisions.length-1]||null;setActiveRevision(rev);loadNotes(first.id,rev?.id);}}
+  async function loadNotes(trackId,revId){const {data}=await sb.from('notes').select('*').eq('track_id',trackId).order('timestamp_sec');const all=data||[];const filtered=revId?all.filter(n=>n.revision_id===revId||n.revision_id===null):all;setNotes(filtered);setTracks(prev=>prev.map(t=>t.id===trackId?{...t,_noteCount:filtered.length}:t));}
   const activeTrack=tracks.find(t=>t.id===activeTrackId)||null;
   const activeIdx=tracks.findIndex(t=>t.id===activeTrackId);
   const audioUrl=activeRevision?activeRevision.mp3_url||activeRevision.audio_url:activeTrack?.mp3_url||activeTrack?.audio_url;
   useEffect(()=>{const el=audioRef.current;if(!el)return;if(audioUrl){if(el.src!==audioUrl){el.src=audioUrl;el.load();setDuration(0);setCurrentTime(0);}}else{el.src='';el.load();setDuration(0);setCurrentTime(0);}},[audioUrl]);
   function playTrack(trackId){if(trackId===activeTrackId){if(audioRef.current){if(playing){audioRef.current.pause();setPlaying(false);}else{audioRef.current.play().catch(()=>{});setPlaying(true);}}return;}if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(trackId);const t=tracks.find(tr=>tr.id===trackId);if(!t)return;const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
   function openDetail(track){if(track.id!==activeTrackId){if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(track.id);const rev=track.revisions?.find(r=>r.is_active)||track.revisions?.[track.revisions.length-1]||null;setActiveRevision(rev);loadNotes(track.id,rev?.id);}setDetailTrack(track);}
-  function jumpToTrack(idx){if(idx<0||idx>=tracks.length)return;const t=tracks[idx];if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(t.id);const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
+  function jumpToTrack(idx){
+    if(idx<0||idx>=tracks.length)return;
+    const t=tracks[idx];
+    if(audioRef.current)audioRef.current.pause();
+    setPlaying(false);setCurrentTime(0);setDuration(0);
+    setActiveTrackId(t.id);
+    const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;
+    setActiveRevision(rev);
+    loadNotes(t.id,rev?.id);
+    setDetailTrack(prev=>prev?t:null);
+    setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);
+  }
   function togglePlay(){if(!audioRef.current)return;if(playing){audioRef.current.pause();setPlaying(false);}else{audioRef.current.play().catch(()=>{});setPlaying(true);}}
   function skip(secs){if(!audioRef.current)return;const t=Math.max(0,Math.min(duration||0,audioRef.current.currentTime+secs));audioRef.current.currentTime=t;setCurrentTime(t);}
   function handleSeek(pct){if(!audioRef.current||!duration)return;const t=pct*duration;audioRef.current.currentTime=t;setCurrentTime(t);}
@@ -194,7 +138,6 @@ export default function Player(){
     .ps-track-info{display:flex;align-items:center;gap:8px;margin-bottom:8px;}.ps-track-name{font-family:var(--fh);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;}.ps-rev-badge{font-size:9px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);color:var(--amber);white-space:nowrap;flex-shrink:0;}.ps-tone-badge{font-size:9px;padding:2px 7px;border-radius:4px;background:var(--surf2);border:1px solid var(--border2);color:var(--t3);white-space:nowrap;flex-shrink:0;}
     .ps-waveform{border-radius:8px;background:var(--surf2);padding:8px 10px 4px;}.ps-time-row{display:flex;justify-content:space-between;font-size:12px;font-weight:500;color:var(--t2);margin-top:4px;}
     .ps-no-track-top{font-size:12px;color:var(--t3);padding:8px 0;}
-    /* Main page fixed bottom transport — unchanged */
     .ps-controls-bar{position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 24px rgba(0,0,0,.6);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));}
     .ps-transport{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;}
     .ps-transport-left{display:flex;align-items:center;justify-content:flex-end;gap:14px;}
@@ -204,70 +147,49 @@ export default function Player(){
     .ps-skip-btn{width:44px;height:44px;border-radius:10px;background:transparent;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:var(--t2);-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}.ps-skip-btn:hover,.ps-skip-btn:active{color:var(--text);}.ps-skip-btn:disabled{opacity:.25;pointer-events:none;}
     .ps-skip-label{font-family:var(--fm);font-size:9px;font-weight:600;line-height:1;letter-spacing:.04em;}
     .ps-track-btn{width:40px;height:44px;border-radius:10px;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--t2);-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}.ps-track-btn:hover,.ps-track-btn:active{color:var(--text);}.ps-track-btn:disabled{opacity:.2;pointer-events:none;}
-    /* Track Detail Modal */
-    .td-backdrop{position:fixed;inset:0;z-index:200;background:transparent;pointer-events:none;transition:background .2s;}
-    .td-backdrop.td-open{background:rgba(0,0,0,.7);pointer-events:auto;}
-    .td-modal{position:fixed;inset:0;z-index:201;background:var(--bg);display:flex;flex-direction:column;transform:translateY(100%);transition:transform .32s cubic-bezier(.32,.72,0,1);will-change:transform;}
-    .td-modal.td-open{transform:translateY(0);}
+    .td-backdrop{position:fixed;inset:0;z-index:200;background:transparent;pointer-events:none;transition:background .2s;}.td-backdrop.td-open{background:rgba(0,0,0,.7);pointer-events:auto;}
+    .td-modal{position:fixed;inset:0;z-index:201;background:var(--bg);display:flex;flex-direction:column;transform:translateY(100%);transition:transform .32s cubic-bezier(.32,.72,0,1);will-change:transform;}.td-modal.td-open{transform:translateY(0);}
     .td-header{display:flex;align-items:flex-start;gap:12px;padding:14px 16px 10px;border-bottom:1px solid var(--border);flex-shrink:0;}
     .td-close{width:36px;height:36px;border-radius:9px;border:1px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;}.td-close:hover{color:var(--text);}
-    .td-title-block{flex:1;min-width:0;}
-    .td-track-name{font-family:var(--fh);font-size:18px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;}
-    .td-rev-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-    .td-rev-badge{font-size:10px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);color:var(--amber);}
-    .td-tone-badge{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--surf2);border:1px solid var(--border2);color:var(--t3);}
+    .td-title-block{flex:1;min-width:0;}.td-track-name{font-family:var(--fh);font-size:18px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;}
+    .td-rev-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}.td-rev-badge{font-size:10px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);color:var(--amber);}.td-tone-badge{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--surf2);border:1px solid var(--border2);color:var(--t3);}
     .td-rev-switch{font-family:var(--fm);font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;}.td-rev-switch:hover{border-color:var(--amber);color:var(--amber);}
     .td-rev-list{background:var(--surf2);border-bottom:1px solid var(--border);flex-shrink:0;}
     .td-rev-item{width:100%;padding:12px 16px;text-align:left;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--t2);font-family:var(--fm);cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;gap:10px;min-height:52px;}.td-rev-item:last-child{border-bottom:none;}.td-rev-item:hover,.td-rev-item:active{background:var(--surf3);}.td-rev-item.active{color:var(--amber);}
     .td-rev-item-label{font-size:14px;font-weight:600;color:var(--text);}.td-rev-item-tone{font-size:11px;color:var(--amber);}.td-rev-item-date{font-size:11px;color:var(--t3);margin-left:auto;}.td-rev-curr{font-size:9px;color:var(--amber);padding:2px 6px;background:var(--aglow);border-radius:4px;border:1px solid rgba(232,160,32,.25);}
     .td-wave-wrap{padding:12px 16px 10px;border-bottom:1px solid var(--border);background:var(--surf);flex-shrink:0;}
     .td-time-row{display:flex;justify-content:space-between;font-size:12px;font-weight:500;color:var(--t2);margin-top:4px;}
-    /* Modal transport bar — same visual as ps-controls-bar, but inside the modal flex column */
-    .td-modal-bar{flex-shrink:0;background:var(--bg);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:8px 16px;}
+    .td-notes-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px;}
+    .td-notes-label{font-size:9px;color:var(--amber);letter-spacing:.12em;text-transform:uppercase;font-weight:500;margin-bottom:10px;}.td-notes-rev{color:var(--t3);text-transform:none;letter-spacing:normal;font-weight:normal;}
+    .td-note-item{padding:10px 0;border-bottom:1px solid var(--border);}.td-note-item:last-child{border-bottom:none;}.td-note-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}.td-note-author{font-family:var(--fh);font-size:13px;color:var(--text);}
+    .td-note-pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--fm);font-size:12px;font-weight:600;padding:0 10px;min-height:32px;background:var(--amber);color:#000;border:none;border-radius:7px;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0;}.td-note-pill:active{opacity:.8;}
+    .td-note-body{font-size:13px;color:#c8c4be;line-height:1.6;}.td-note-date{display:block;font-size:10px;color:var(--t3);margin-top:3px;}.td-notes-empty{font-size:13px;color:var(--t3);padding:16px 0;text-align:center;}
+    .td-compose{flex-shrink:0;border-top:1px solid var(--border);padding:10px 16px;background:var(--surf);}
+    .td-compose-trigger{display:flex;align-items:center;gap:8px;width:100%;padding:13px 16px;border-radius:12px;border:1.5px dashed var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .15s;text-align:left;}.td-compose-trigger:hover,.td-compose-trigger:active{border-color:var(--amber);color:var(--amber);background:var(--aglow);}.td-compose-trigger strong{color:var(--text);}
+    .td-compose-textarea{width:100%;background:var(--surf2);border:1.5px solid var(--amber);border-radius:12px;padding:12px 14px;color:var(--text);font-family:var(--fm);font-size:16px!important;resize:none;outline:none;-webkit-appearance:none;line-height:1.5;margin-bottom:8px;display:block;}
+    .td-compose-actions{display:flex;align-items:center;gap:8px;}.td-compose-ts{font-family:var(--fm);font-size:12px;font-weight:600;padding:3px 10px;background:var(--amber);color:#000;border-radius:6px;flex-shrink:0;}
+    .td-compose-cancel{font-family:var(--fm);font-size:13px;padding:8px 14px;border-radius:9px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;margin-left:auto;}
+    .td-compose-post{font-family:var(--fm);font-size:13px;font-weight:600;padding:8px 18px;border-radius:9px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;}.td-compose-post:disabled{opacity:.35;pointer-events:none;}
+    .td-modal-bar{flex-shrink:0;background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 24px rgba(0,0,0,.5);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));}
     .td-modal-transport{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;}
     .td-transport-left{display:flex;align-items:center;justify-content:flex-end;gap:14px;}
     .td-transport-center{display:flex;align-items:center;justify-content:center;padding:0 20px;}
     .td-transport-right{display:flex;align-items:center;justify-content:flex-start;gap:14px;}
-    .td-notes-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px;}
-    .td-notes-label{font-size:9px;color:var(--amber);letter-spacing:.12em;text-transform:uppercase;font-weight:500;margin-bottom:10px;}
-    .td-notes-rev{color:var(--t3);text-transform:none;letter-spacing:normal;font-weight:normal;}
-    .td-note-item{padding:10px 0;border-bottom:1px solid var(--border);}.td-note-item:last-child{border-bottom:none;}
-    .td-note-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}
-    .td-note-author{font-family:var(--fh);font-size:13px;color:var(--text);}
-    .td-note-pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--fm);font-size:12px;font-weight:600;padding:0 10px;min-height:32px;background:var(--amber);color:#000;border:none;border-radius:7px;cursor:pointer;-webkit-tap-highlight-color:transparent;flex-shrink:0;}.td-note-pill:active{opacity:.8;}
-    .td-note-body{font-size:13px;color:#c8c4be;line-height:1.6;}
-    .td-note-date{display:block;font-size:10px;color:var(--t3);margin-top:3px;}
-    .td-notes-empty{font-size:13px;color:var(--t3);padding:16px 0;text-align:center;}
-    .td-compose{flex-shrink:0;border-top:1px solid var(--border);padding:10px 16px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--surf);}
-    .td-compose-trigger{display:flex;align-items:center;gap:8px;width:100%;padding:13px 16px;border-radius:12px;border:1.5px dashed var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .15s;text-align:left;}.td-compose-trigger:hover,.td-compose-trigger:active{border-color:var(--amber);color:var(--amber);background:var(--aglow);}.td-compose-trigger strong{color:var(--text);}
-    .td-compose-textarea{width:100%;background:var(--surf2);border:1.5px solid var(--amber);border-radius:12px;padding:12px 14px;color:var(--text);font-family:var(--fm);font-size:16px!important;resize:none;outline:none;-webkit-appearance:none;line-height:1.5;margin-bottom:8px;display:block;}
-    .td-compose-actions{display:flex;align-items:center;gap:8px;}
-    .td-compose-ts{font-family:var(--fm);font-size:12px;font-weight:600;padding:3px 10px;background:var(--amber);color:#000;border-radius:6px;flex-shrink:0;}
-    .td-compose-cancel{font-family:var(--fm);font-size:13px;padding:8px 14px;border-radius:9px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;margin-left:auto;}
-    .td-compose-post{font-family:var(--fm);font-size:13px;font-weight:600;padding:8px 18px;border-radius:9px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;}.td-compose-post:disabled{opacity:.35;pointer-events:none;}
     .topbar{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--surf);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20;}.logo{font-family:var(--fh);font-size:17px;color:var(--text);text-decoration:none;}.logo em{color:var(--amber);font-style:normal;}.breadcrumb{font-size:12px;color:var(--t2);margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}.back{font-size:11px;color:var(--t2);text-decoration:none;padding:5px 10px;border-radius:7px;border:1px solid var(--border2);white-space:nowrap;-webkit-tap-highlight-color:transparent;}.back:hover{color:var(--text);}
     .page{padding:12px 12px 120px;}.page-header{padding:12px 0 16px;}.proj-title{font-family:var(--fh);font-size:clamp(20px,5vw,30px);margin-bottom:2px;}.proj-artist{font-size:11px;color:var(--t2);margin-bottom:14px;}.top-actions{display:flex;gap:8px;}.btn-upload-rev{display:flex;align-items:center;gap:6px;font-family:var(--fm);font-size:13px;font-weight:500;padding:10px 16px;border-radius:9px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
     .tracks-lbl{font-size:10px;color:var(--t3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px;}
-    .tr-row{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surf);}
-    .tr-row:last-child{border-bottom:none;}
-    .tr-row.tr-active{background:var(--surf2);}
+    .tr-row{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surf);}.tr-row:last-child{border-bottom:none;}.tr-row.tr-active{background:var(--surf2);}
     .tr-play-zone{display:flex;align-items:center;flex:1;min-width:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:14px 0 14px 12px;min-height:60px;}
-    .tr-num-play{width:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-    .tr-idx{font-family:var(--fm);font-size:12px;color:var(--t3);}
-    .tr-playing-icon{animation:pulse 1.2s ease-in-out infinite alternate;}
-    @keyframes pulse{from{opacity:.6;}to{opacity:1;}}
-    .tr-info{flex:1;min-width:0;padding:0 8px;}
-    .tr-name{font-family:var(--fh);font-size:16px;color:var(--text);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .tr-meta{display:flex;align-items:center;gap:8px;margin-top:2px;}
-    .tr-rev{font-size:10px;color:var(--t3);}
+    .tr-num-play{width:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}.tr-idx{font-family:var(--fm);font-size:12px;color:var(--t3);}
+    .tr-playing-icon{animation:pulse 1.2s ease-in-out infinite alternate;}@keyframes pulse{from{opacity:.6;}to{opacity:1;}}
+    .tr-info{flex:1;min-width:0;padding:0 8px;}.tr-name{font-family:var(--fh);font-size:16px;color:var(--text);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .tr-meta{display:flex;align-items:center;gap:8px;margin-top:2px;}.tr-rev{font-size:10px;color:var(--t3);}
     .tr-actions{display:flex;align-items:center;gap:2px;padding-right:8px;flex-shrink:0;}
     .tr-comment-btn{position:relative;width:40px;height:44px;border-radius:9px;border:none;background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}.tr-comment-btn:hover,.tr-comment-btn:active{color:var(--t2);}
     .tr-note-count{position:absolute;top:6px;right:4px;font-size:8px;font-weight:700;background:var(--amber);color:#000;border-radius:8px;padding:1px 4px;font-family:var(--fm);min-width:14px;text-align:center;}
     .tr-menu-btn{width:36px;height:44px;border-radius:9px;border:none;background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:0;flex-shrink:0;}.tr-menu-btn:hover,.tr-menu-btn:active{color:var(--t2);}
-    .tr-rename{display:flex;gap:6px;align-items:center;padding:10px 12px;flex:1;min-width:0;}
-    .tr-rename-input{flex:1;min-width:0;background:var(--bg);border:2px solid var(--amber);border-radius:8px;color:var(--text);font-family:var(--fh);font-size:16px;padding:7px 11px;outline:none;-webkit-appearance:none;}
-    .tr-rename-save{font-family:var(--fm);font-size:12px;font-weight:500;padding:7px 14px;border-radius:7px;background:var(--amber);color:#000;border:none;cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
-    .tr-rename-cancel{font-family:var(--fm);font-size:12px;padding:7px 12px;border-radius:7px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
+    .tr-rename{display:flex;gap:6px;align-items:center;padding:10px 12px;flex:1;min-width:0;}.tr-rename-input{flex:1;min-width:0;background:var(--bg);border:2px solid var(--amber);border-radius:8px;color:var(--text);font-family:var(--fh);font-size:16px;padding:7px 11px;outline:none;-webkit-appearance:none;}
+    .tr-rename-save{font-family:var(--fm);font-size:12px;font-weight:500;padding:7px 14px;border-radius:7px;background:var(--amber);color:#000;border:none;cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;}.tr-rename-cancel{font-family:var(--fm);font-size:12px;padding:7px 12px;border-radius:7px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
     .tdrop-item{width:100%;padding:14px 16px;display:flex;align-items:center;gap:10px;font-family:var(--fm);font-size:14px;color:var(--t2);background:transparent;border:none;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.tdrop-item:hover,.tdrop-item:active{background:var(--surf3);color:var(--text);}.tdrop-item.danger{color:#e08080;}.tdrop-item.danger:hover,.tdrop-item.danger:active{background:rgba(224,80,80,.08);color:var(--red);}.tdrop-divider{height:1px;background:var(--border);margin:2px 0;}
     .rev-action-panel{padding:14px;border-top:1px solid var(--border);background:var(--surf2);}.rev-action-label{font-size:10px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;}.rev-del-row{width:100%;padding:14px 12px;text-align:left;background:var(--surf);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--fm);cursor:pointer;margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;min-height:52px;}.rev-del-row:hover,.rev-del-row:active{border-color:var(--red);background:rgba(224,80,80,.05);}.rev-del-row-label{font-size:14px;font-weight:600;}.rev-del-row-tone{font-size:11px;color:var(--amber);}.rev-del-row-date{font-size:11px;color:var(--t3);margin-left:auto;}.rev-del-row-active{font-size:9px;color:#6ab4ff;padding:2px 7px;background:rgba(100,180,255,.1);border-radius:4px;border:1px solid rgba(100,180,255,.25);}.rev-del-confirm-title{font-family:var(--fh);font-size:17px;margin-bottom:8px;}.rev-del-confirm-sub{font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:14px;}.rev-del-actions{display:flex;gap:8px;justify-content:flex-end;}
     .btn-ghost-sm{font-family:var(--fm);font-size:13px;padding:8px 14px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.btn-delete-sm{font-family:var(--fm);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--red);color:#fff;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
@@ -275,39 +197,23 @@ export default function Player(){
     .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(10px);z-index:100;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom,24px);}.modal-scroll-inner{min-height:100%;display:flex;align-items:flex-start;justify-content:center;padding:20px 12px 32px;}.rev-modal{background:var(--surf);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:560px;padding:20px;}.rev-modal-title{font-family:var(--fh);font-size:20px;margin-bottom:4px;}.rev-modal-sub{font-size:12px;color:var(--t2);margin-bottom:16px;line-height:1.5;}.rev-dropzone{border:2px dashed var(--border2);border-radius:10px;background:var(--surf2);padding:20px;text-align:center;cursor:pointer;font-size:13px;color:var(--t2);transition:all .2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;margin-bottom:14px;}.rev-dropzone:hover,.rev-dropzone.over{border-color:var(--amber);background:var(--aglow);color:var(--amber);}.rev-file-list{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}.rev-file-row{background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:12px;}.rev-file-row-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;}.rev-file-row.is-new{border-color:rgba(100,180,255,.3);}.rev-file-name-input{flex:1;background:var(--bg);border:1.5px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--fm);font-size:16px!important;padding:9px 12px;outline:none;-webkit-appearance:none;}.rev-file-name-input:focus{border-color:var(--amber);}.rev-file-badge-new{font-size:9px;background:rgba(100,180,255,.1);color:#6ab4ff;border:1px solid rgba(100,180,255,.25);border-radius:4px;padding:2px 6px;white-space:nowrap;}.rev-file-badge-rev{font-size:9px;background:var(--aglow);color:var(--amber);border:1px solid rgba(232,160,32,.25);border-radius:4px;padding:2px 6px;white-space:nowrap;}.rev-file-ref{font-size:10px;color:var(--t3);font-style:italic;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.rev-file-remove{width:28px;height:28px;border-radius:50%;border:1px solid var(--border2);background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;-webkit-tap-highlight-color:transparent;}.rev-file-remove:hover{border-color:var(--red);color:var(--red);}.rev-modal-footer{border-top:1px solid var(--border);padding-top:14px;margin-top:4px;display:flex;align-items:center;gap:10px;}.rev-modal-status{font-size:11px;color:var(--t2);flex:1;}
     .rerun-target{font-size:13px;color:var(--t2);margin-bottom:14px;padding:10px 12px;background:var(--surf2);border-radius:8px;}.tgm-wrap{background:var(--surf3);border:1px solid var(--border2);border-radius:10px;padding:12px;}.tgm-axes{display:flex;font-size:9px;color:var(--t3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px;align-items:center;}.tgm-row-labels{display:flex;flex-direction:column;gap:4px;margin-right:6px;font-size:9px;color:var(--t3);}.tgm-row-labels div{height:40px;display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;}.tgm-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;flex:1;}.tgm-cell{height:40px;border-radius:6px;border:1.5px solid var(--border2);background:var(--surf2);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:10px;font-weight:600;transition:all .15s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;position:relative;}.tgm-cell:hover:not(:disabled){border-color:var(--amber);color:var(--text);background:var(--aglow);}.tgm-cell.active{border-color:var(--amber);background:rgba(232,160,32,.18);color:var(--amber);}.tgm-cell.center{border-color:rgba(232,160,32,.3);}.tgm-cell.used{opacity:.3;cursor:not-allowed;background:var(--surf3);}.tgm-used-dot{position:absolute;top:2px;right:3px;font-size:8px;color:var(--t3);}.tgm-tip{margin-top:8px;padding:7px 10px;background:var(--surf2);border-radius:7px;min-height:36px;display:flex;flex-direction:column;gap:2px;}.tgm-tip-label{font-size:11px;color:var(--amber);font-weight:500;}.tgm-tip-desc{font-size:10px;color:var(--t2);}.tgm-set-all{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;}.tgm-set-all:hover{border-color:var(--amber);color:var(--amber);}
     .btn-amber-sm{font-family:var(--fm);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.btn-amber-sm:disabled{opacity:.35;pointer-events:none;}
-    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar{padding-left:24px;padding-right:24px;}.td-modal-bar{padding-left:24px;padding-right:24px;}}`}</style>
+    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar,.td-modal-bar{padding-left:24px;padding-right:24px;}}`}</style>
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><a href="/" className="back">← Dashboard</a></div>
     <div className="ps-waveform-bar">
-      {activeTrack?(<>
-        <div className="ps-track-info"><span className="ps-track-name">{activeTrack.title}</span>{activeRevision&&<span className="ps-rev-badge">{activeRevision.label||'v1'}</span>}{(activeRevision?.tone_label||activeTrack.tone_label)&&<span className="ps-tone-badge">{activeRevision?.tone_label||activeTrack.tone_label}</span>}</div>
-        <div className="ps-waveform"><Waveform peaks={activeTrack.peaks} progress={progress} notes={notes} duration={duration} onSeek={handleSeek}/><div className="ps-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
-      </>):(<div className="ps-no-track-top">Tap a track to start listening</div>)}
+      {activeTrack?(<><div className="ps-track-info"><span className="ps-track-name">{activeTrack.title}</span>{activeRevision&&<span className="ps-rev-badge">{activeRevision.label||'v1'}</span>}{(activeRevision?.tone_label||activeTrack.tone_label)&&<span className="ps-tone-badge">{activeRevision?.tone_label||activeTrack.tone_label}</span>}</div><div className="ps-waveform"><Waveform peaks={activeTrack.peaks} progress={progress} notes={notes} duration={duration} onSeek={handleSeek}/><div className="ps-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div></>):(<div className="ps-no-track-top">Tap a track to start listening</div>)}
     </div>
     <div className="page">
-      <div className="page-header">
-        <div className="proj-title">{project?.title}</div>
-        <div className="proj-artist">{project?.artist}</div>
-        <div className="top-actions"><button className="btn-upload-rev" onClick={()=>{setRevFiles([]);setRevStatus('');setShowRevModal(true);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Upload Revisions</button></div>
-      </div>
+      <div className="page-header"><div className="proj-title">{project?.title}</div><div className="proj-artist">{project?.artist}</div><div className="top-actions"><button className="btn-upload-rev" onClick={()=>{setRevFiles([]);setRevStatus('');setShowRevModal(true);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Upload Revisions</button></div></div>
       <div className="tracks-lbl">{tracks.length} {tracks.length===1?'track':'tracks'}</div>
       <div style={{borderRadius:12,overflow:'hidden',border:'1px solid var(--border)'}}>
         {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
       </div>
     </div>
-    {/* Main page fixed transport bar — unchanged */}
     <div className="ps-controls-bar">
       <div className="ps-transport">
-        <div className="ps-transport-left">
-          <button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx-1)} disabled={!activeTrack||activeIdx<=0}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,5 9,12 19,19"/><rect x="5" y="5" width="2.5" height="14" rx="1"/></svg></button>
-          <button className="ps-skip-btn" onClick={()=>skip(-10)} disabled={!audioUrl}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg><span className="ps-skip-label">10</span></button>
-        </div>
-        <div className="ps-transport-center">
-          <button className="ps-play-btn" onClick={togglePlay} disabled={!audioUrl}><svg width="16" height="16" viewBox="0 0 16 16" fill="#000">{playing?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>:<polygon points="3,1 15,8 3,15"/>}</svg></button>
-        </div>
-        <div className="ps-transport-right">
-          <button className="ps-skip-btn" onClick={()=>skip(10)} disabled={!audioUrl}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.95"/></svg><span className="ps-skip-label">10</span></button>
-          <button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx+1)} disabled={!activeTrack||activeIdx<0||activeIdx>=tracks.length-1}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,5 15,12 5,19"/><rect x="16.5" y="5" width="2.5" height="14" rx="1"/></svg></button>
-        </div>
+        <div className="ps-transport-left"><button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx-1)} disabled={!activeTrack||activeIdx<=0}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,5 9,12 19,19"/><rect x="5" y="5" width="2.5" height="14" rx="1"/></svg></button><button className="ps-skip-btn" onClick={()=>skip(-10)} disabled={!audioUrl}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg><span className="ps-skip-label">10</span></button></div>
+        <div className="ps-transport-center"><button className="ps-play-btn" onClick={togglePlay} disabled={!audioUrl}><svg width="16" height="16" viewBox="0 0 16 16" fill="#000">{playing?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>:<polygon points="3,1 15,8 3,15"/>}</svg></button></div>
+        <div className="ps-transport-right"><button className="ps-skip-btn" onClick={()=>skip(10)} disabled={!audioUrl}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.95"/></svg><span className="ps-skip-label">10</span></button><button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx+1)} disabled={!activeTrack||activeIdx<0||activeIdx>=tracks.length-1}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,5 15,12 5,19"/><rect x="16.5" y="5" width="2.5" height="14" rx="1"/></svg></button></div>
       </div>
     </div>
     <TrackDetail open={!!detailTrack} track={detailTrack||activeTrack} activeRevision={activeRevision} notes={notes} currentTime={currentTime} duration={duration} progress={progress} isPlaying={playing} onTogglePlay={togglePlay} onSkip={skip} onPrevTrack={()=>jumpToTrack(activeIdx-1)} onNextTrack={()=>jumpToTrack(activeIdx+1)} canPrev={activeIdx>0} canNext={activeIdx>=0&&activeIdx<tracks.length-1} onSeek={handleSeek} onClose={()=>setDetailTrack(null)} onPost={postNote} onSeekToTime={seekToTime} onRevisionSelect={selectRevisionInDetail}/>
