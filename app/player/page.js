@@ -128,8 +128,27 @@ export default function Player(){
   const [rerunTrack,setRerunTrack]=useState(null);const [rerunTone,setRerunTone]=useState(null);const [rerunUploading,setRerunUploading]=useState(false);const [rerunStatus,setRerunStatus]=useState('');
   const [deleteTrackConfirm,setDeleteTrackConfirm]=useState(null);
   useEffect(()=>{sb.auth.getSession().then(({data:{session}})=>{if(!session){window.location.href='/auth';return;}setUser(session.user);const pid=new URLSearchParams(window.location.search).get('project');if(!pid){window.location.href='/';return;}loadProject(pid);});},[]);
-  async function loadProject(pid){const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();if(!proj){window.location.href='/';return;}setProject(proj);const {data:tr}=await sb.from('tracks').select('*,revisions(*)').eq('project_id',pid).order('position');const tl=(tr||[]).map(t=>({...t,revisions:[...(t.revisions||[])].sort((a,b)=>(a.version_number||0)-(b.version_number||0))}));setTracks(tl);if(tl.length>0){const first=tl[0];setActiveTrackId(first.id);const rev=first.revisions?.find(r=>r.is_active)||first.revisions?.[first.revisions.length-1]||null;setActiveRevision(rev);loadNotes(first.id,rev?.id);}}
-  async function loadNotes(trackId,revId){const {data}=await sb.from('notes').select('*').eq('track_id',trackId).order('timestamp_sec');const all=data||[];setNotes(revId?all.filter(n=>n.revision_id===revId||n.revision_id===null):all);}
+  async function loadProject(pid){
+    const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();
+    if(!proj){window.location.href='/';return;}
+    setProject(proj);
+    const {data:tr}=await sb.from('tracks').select('*,revisions(*)').eq('project_id',pid).order('position');
+    // Fetch note counts for ALL tracks in one query
+    const {data:noteCounts}=await sb.from('notes').select('track_id').eq('project_id',pid);
+    const countMap={};
+    (noteCounts||[]).forEach(n=>{countMap[n.track_id]=(countMap[n.track_id]||0)+1;});
+    const tl=(tr||[]).map(t=>({...t,revisions:[...(t.revisions||[])].sort((a,b)=>(a.version_number||0)-(b.version_number||0)),_noteCount:countMap[t.id]||0}));
+    setTracks(tl);
+    if(tl.length>0){const first=tl[0];setActiveTrackId(first.id);const rev=first.revisions?.find(r=>r.is_active)||first.revisions?.[first.revisions.length-1]||null;setActiveRevision(rev);loadNotes(first.id,rev?.id);}
+  }
+  async function loadNotes(trackId,revId){
+    const {data}=await sb.from('notes').select('*').eq('track_id',trackId).order('timestamp_sec');
+    const all=data||[];
+    const filtered=revId?all.filter(n=>n.revision_id===revId||n.revision_id===null):all;
+    setNotes(filtered);
+    // Update _noteCount for this track with the accurate filtered count
+    setTracks(prev=>prev.map(t=>t.id===trackId?{...t,_noteCount:filtered.length}:t));
+  }
   const activeTrack=tracks.find(t=>t.id===activeTrackId)||null;
   const activeIdx=tracks.findIndex(t=>t.id===activeTrackId);
   const audioUrl=activeRevision?activeRevision.mp3_url||activeRevision.audio_url:activeTrack?.mp3_url||activeTrack?.audio_url;
@@ -205,7 +224,6 @@ export default function Player(){
     .topbar{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--surf);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20;}.logo{font-family:var(--fh);font-size:17px;color:var(--text);text-decoration:none;}.logo em{color:var(--amber);font-style:normal;}.breadcrumb{font-size:12px;color:var(--t2);margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}.back{font-size:11px;color:var(--t2);text-decoration:none;padding:5px 10px;border-radius:7px;border:1px solid var(--border2);white-space:nowrap;-webkit-tap-highlight-color:transparent;}.back:hover{color:var(--text);}
     .page{padding:12px 12px 120px;}.page-header{padding:12px 0 16px;}.proj-title{font-family:var(--fh);font-size:clamp(20px,5vw,30px);margin-bottom:2px;}.proj-artist{font-size:11px;color:var(--t2);margin-bottom:14px;}.top-actions{display:flex;gap:8px;}.btn-upload-rev{display:flex;align-items:center;gap:6px;font-family:var(--fm);font-size:13px;font-weight:500;padding:10px 16px;border-radius:9px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
     .tracks-lbl{font-size:10px;color:var(--t3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px;}
-    /* Track rows — THE FIX: .tr-play-zone gets min-width:0 */
     .tr-row{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surf);}
     .tr-row:last-child{border-bottom:none;}
     .tr-row.tr-active{background:var(--surf2);}
@@ -249,7 +267,7 @@ export default function Player(){
       </div>
       <div className="tracks-lbl">{tracks.length} {tracks.length===1?'track':'tracks'}</div>
       <div style={{borderRadius:12,overflow:'hidden',border:'1px solid var(--border)'}}>
-        {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} noteCount={activeTrackId===track.id?notes.length:0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
+        {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
       </div>
     </div>
     <div className="ps-controls-bar">
