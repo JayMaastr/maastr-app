@@ -79,7 +79,8 @@ function WaveformCanvas({peaks}) {
   return <canvas ref={ref} style={{display:'block',width:'100%',height:'100%'}}/>;
 }
 
-function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const [hov,setHov]=useState(null);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span>← Warmer</span><span style={{margin:'0 auto',color:'#e8a020',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter →</span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);const isActive=i===value;return(<button key={i} className={'tgm-cell'+(isActive?' active':'')+(used?' used':'')} style={{background:TONE_BG[i],borderColor:isActive||i===hov?TONE_BORDER[i]:'rgba(0,0,0,0.2)',borderWidth:isActive?'2.5px':'1.5px',opacity:used?0.55:1,cursor:used?'not-allowed':'pointer'}} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}>{used&&<svg width="18" height="18" viewBox="0 0 18 18" style={{position:'absolute',pointerEvents:'none'}}><line x1="3" y1="3" x2="15" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/><line x1="15" y1="3" x2="3" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/></svg>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'#4a4945',marginTop:6}}>✓ Already mastered — crossed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
+function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const [hov,setHov]=useState(null);
+  const [showMenu,setShowMenu]=useState(false);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span>← Warmer</span><span style={{margin:'0 auto',color:'#e8a020',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter →</span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);const isActive=i===value;return(<button key={i} className={'tgm-cell'+(isActive?' active':'')+(used?' used':'')} style={{background:TONE_BG[i],borderColor:isActive||i===hov?TONE_BORDER[i]:'rgba(0,0,0,0.2)',borderWidth:isActive?'2.5px':'1.5px',opacity:used?0.55:1,cursor:used?'not-allowed':'pointer'}} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}>{used&&<svg width="18" height="18" viewBox="0 0 18 18" style={{position:'absolute',pointerEvents:'none'}}><line x1="3" y1="3" x2="15" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/><line x1="15" y1="3" x2="3" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/></svg>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'#4a4945',marginTop:6}}>✓ Already mastered — crossed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
 function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, onSetAll}) {
   const [showTone,setShowTone]=useState(false);
   const [suggestions,setSuggestions]=useState([]);
@@ -374,7 +375,21 @@ export default function Dashboard(){
           <div className="logo">maastr<em>.</em></div>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:11,color:'var(--t3)'}}>{user?.email}</span>
-            <div className="avatar" onClick={()=>sb.auth.signOut().then(()=>window.location.href='/auth')}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
+            <div style={{position:'relative'}}>
+            <div className="avatar" onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
+            {showMenu&&(<>
+              <div style={{position:'fixed',inset:0,zIndex:99}} onClick={()=>setShowMenu(false)}/>
+              <div style={{position:'absolute',top:'calc(100% + 8px)',right:0,background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:10,minWidth:180,zIndex:100,overflow:'hidden',boxShadow:'0 8px 32px rgba(0,0,0,.4)'}}>
+                <div style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',fontSize:11,color:'var(--t3)'}}>{user?.email}</div>
+                <div style={{padding:6}}>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/account';}}>Account Settings</button>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/pricing';}}>Pricing & Plans</button>
+                  <div style={{height:1,background:'var(--border)',margin:'4px 0'}}/>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'#e05050',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);sb.auth.signOut().then(()=>window.location.href='/auth');}}>Sign Out</button>
+                </div>
+              </div>
+            </>)}
+          </div>
           </div>
         </header>
         <div className="hero">
