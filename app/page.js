@@ -481,7 +481,20 @@ export default function Dashboard(){
         .btn-create{font-family:var(--fm);font-size:13px;font-weight:500;padding:12px 24px;border-radius:9px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;} .btn-create:disabled{opacity:.4;pointer-events:none;}
         .name-required{font-size:10px;color:#e08080;margin-top:4px;}
         @media(max-width:640px){.app{padding:0 16px;}.hero{flex-direction:column;align-items:flex-start;padding:32px 0 28px;}.hero-stats{width:100%;}.grid{grid-template-columns:1fr;}.modal-bg{padding:16px 12px 24px;}.modal{padding:20px 16px;}.trv2-filename em{max-width:120px;}.tone-btn span:first-of-type{display:none;}}
-      `}</style>
+      `}
+    .tgm-wrap{background:var(--surf3);border:1px solid var(--border2);border-radius:10px;padding:12px;}
+    .tgm-axes{display:flex;font-size:9px;color:var(--t3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px;align-items:center;}
+    .tgm-row-labels{display:flex;flex-direction:column;gap:4px;margin-right:6px;font-size:9px;color:var(--t3);}
+    .tgm-row-labels div{height:36px;display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;}
+    .tgm-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;flex:1;}
+    .tgm-cell{height:36px;border-radius:7px;border-style:solid;cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;transition:filter .15s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+    .tgm-cell:hover:not(:disabled):not(.used){filter:brightness(1.2);}
+    .tgm-cell.active{filter:brightness(1.15);}
+    .tgm-cell.used{cursor:not-allowed;}
+    .tgm-tip{margin-top:8px;padding:7px 10px;background:var(--surf2);border-radius:7px;min-height:36px;display:flex;flex-direction:column;gap:2px;}
+    .tgm-tip-label{font-size:11px;color:var(--amber);font-weight:500;}.tgm-tip-desc{font-size:10px;color:var(--t2);}
+    .tgm-set-all{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;}.tgm-set-all:hover{border-color:var(--amber);color:var(--amber);}
+    </style>
 
       <div className="app">
         <header>
