@@ -14,7 +14,9 @@ async function computePeaks(file,n=200){try{const ab=await file.arrayBuffer();co
 function Waveform({peaks,progress,notes,duration,onSeek}){const canvasRef=useRef(null),rafRef=useRef(null),progressRef=useRef(progress);useEffect(()=>{progressRef.current=progress;},[progress]);const stablePeaks=useRef(FALLBACK_PEAKS);if(peaks&&peaks.length>4)stablePeaks.current=peaks;useEffect(()=>{const canvas=canvasRef.current;if(!canvas)return;const dpr=window.devicePixelRatio||1,W=canvas.parentElement?.offsetWidth||600,H=72;canvas.width=W*dpr;canvas.height=H*dpr;canvas.style.width=W+'px';canvas.style.height=H+'px';const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);const data=stablePeaks.current,BAR=2,GAP=1,STEP=BAR+GAP,numBars=Math.floor(W/STEP),cy=H/2;const heights=new Float32Array(numBars);for(let i=0;i<numBars;i++){const pi=Math.floor(i/numBars*data.length);heights[i]=Math.max(2,data[Math.min(pi,data.length-1)]*(cy-5));}const nc=document.createElement('canvas');nc.width=W;nc.height=H;const nctx=nc.getContext('2d');if(notes&&notes.length&&duration>0){notes.forEach(n=>{if(n.timestamp_sec==null||n.timestamp_sec>duration)return;const x=(n.timestamp_sec/duration)*W;nctx.save();nctx.strokeStyle='rgba(255,255,255,0.25)';nctx.lineWidth=1;nctx.setLineDash([2,3]);nctx.beginPath();nctx.moveTo(x,3);nctx.lineTo(x,H-3);nctx.stroke();nctx.restore();nctx.fillStyle='#e8a020';nctx.beginPath();nctx.arc(x,3,3,0,Math.PI*2);nctx.fill();});}let lastPlayX=-999;function draw(){const prog=Math.max(0,Math.min(1,progressRef.current||0)),playX=prog*W;if(Math.abs(playX-lastPlayX)>=.5){lastPlayX=playX;const cutBar=Math.floor(prog*numBars);ctx.clearRect(0,0,W,H);for(let i=0;i<numBars;i++){const h=heights[i];ctx.fillStyle=i<cutBar?'rgba(232,160,32,1)':'rgba(232,160,32,0.2)';ctx.fillRect(i*STEP,cy-h,BAR,h*2);}ctx.drawImage(nc,0,0);if(prog>.001){const px=Math.round(playX);ctx.save();ctx.shadowColor='rgba(232,160,32,0.8)';ctx.shadowBlur=8;ctx.fillStyle='#fff';ctx.fillRect(px-1,0,2,H);ctx.fillStyle='#ffcc44';ctx.beginPath();ctx.arc(px,3,4,0,Math.PI*2);ctx.fill();ctx.restore();}}rafRef.current=requestAnimationFrame(draw);}draw();return()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);};},[notes,duration]);return(<div onClick={e=>{if(!onSeek)return;const r=e.currentTarget.getBoundingClientRect();onSeek(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)));}} style={{width:'100%',height:72,cursor:'crosshair',userSelect:'none',WebkitUserSelect:'none'}}><canvas ref={canvasRef} style={{display:'block',width:'100%',height:72}}/></div>);}
 function FixedDropdown({anchorRef,open,onClose,children}){const [pos,setPos]=useState({top:0,right:0});function recalc(){if(!anchorRef.current)return;const rect=anchorRef.current.getBoundingClientRect();setPos({top:rect.bottom+4,right:window.innerWidth-rect.right});}useEffect(()=>{if(!open)return;recalc();window.addEventListener('scroll',recalc,true);return()=>{window.removeEventListener('scroll',recalc,true);};},[open]);if(!open)return null;return(<><div style={{position:'fixed',inset:0,zIndex:998,background:'transparent'}} onClick={onClose}/><div style={{position:'fixed',top:pos.top,right:pos.right,zIndex:999,background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:10,minWidth:176,boxShadow:'0 8px 40px rgba(0,0,0,.6)',overflow:'hidden'}}>{children}</div></>);}
 function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const [hov,setHov]=useState(null);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span>← Darker</span><span style={{margin:'0 auto',color:'var(--amber)',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter →</span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);return(<button key={i} className={'tgm-cell'+(i===value?' active':'')+(i===4?' center':'')+(used?' used':'')} onMouseEnter={()=>!used&&setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}><span>{t.short}</span>{used&&<span className="tgm-used-dot">✓</span>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'var(--t3)',marginTop:6}}>✓ Already mastered — greyed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
-function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progress,onSeek,onClose,onPost,onSeekToTime,onRevisionSelect,userName}){
+
+/* TRACK DETAIL MODAL — adds isPlaying + onTogglePlay */
+function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSeek,onClose,onPost,onSeekToTime,onRevisionSelect,userName}){
   const [noteText,setNoteText]=useState('');
   const [posting,setPosting]=useState(false);
   const [lockedTime,setLockedTime]=useState(currentTime);
@@ -39,9 +41,20 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
         </div>
       </div>
       {revSwitcherOpen&&revisions.length>1&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
+      {/* Waveform + transport row */}
       <div className="td-wave-wrap">
         <Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/>
-        <div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div>
+        <div className="td-transport-row">
+          <span className="td-time">{fmt(currentTime)}</span>
+          <button className="td-play-btn" onClick={onTogglePlay} disabled={!duration}>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="#000">
+              {isPlaying
+                ?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>
+                :<polygon points="3,1 15,8 3,15"/>}
+            </svg>
+          </button>
+          <span className="td-time td-time-right">{fmt(duration)}</span>
+        </div>
       </div>
       <div className="td-notes-scroll">
         {notes.length>0?(<>
@@ -133,7 +146,6 @@ export default function Player(){
     if(!proj){window.location.href='/';return;}
     setProject(proj);
     const {data:tr}=await sb.from('tracks').select('*,revisions(*)').eq('project_id',pid).order('position');
-    // Fetch note counts for ALL tracks in one query
     const {data:noteCounts}=await sb.from('notes').select('track_id').eq('project_id',pid);
     const countMap={};
     (noteCounts||[]).forEach(n=>{countMap[n.track_id]=(countMap[n.track_id]||0)+1;});
@@ -146,7 +158,6 @@ export default function Player(){
     const all=data||[];
     const filtered=revId?all.filter(n=>n.revision_id===revId||n.revision_id===null):all;
     setNotes(filtered);
-    // Update _noteCount for this track with the accurate filtered count
     setTracks(prev=>prev.map(t=>t.id===trackId?{...t,_noteCount:filtered.length}:t));
   }
   const activeTrack=tracks.find(t=>t.id===activeTrackId)||null;
@@ -202,8 +213,12 @@ export default function Player(){
     .td-rev-list{background:var(--surf2);border-bottom:1px solid var(--border);flex-shrink:0;}
     .td-rev-item{width:100%;padding:12px 16px;text-align:left;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--t2);font-family:var(--fm);cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;gap:10px;min-height:52px;}.td-rev-item:last-child{border-bottom:none;}.td-rev-item:hover,.td-rev-item:active{background:var(--surf3);}.td-rev-item.active{color:var(--amber);}
     .td-rev-item-label{font-size:14px;font-weight:600;color:var(--text);}.td-rev-item-tone{font-size:11px;color:var(--amber);}.td-rev-item-date{font-size:11px;color:var(--t3);margin-left:auto;}.td-rev-curr{font-size:9px;color:var(--amber);padding:2px 6px;background:var(--aglow);border-radius:4px;border:1px solid rgba(232,160,32,.25);}
-    .td-wave-wrap{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surf);flex-shrink:0;}
-    .td-time-row{display:flex;justify-content:space-between;font-size:12px;font-weight:500;color:var(--t2);margin-top:4px;}
+    .td-wave-wrap{padding:12px 16px 10px;border-bottom:1px solid var(--border);background:var(--surf);flex-shrink:0;}
+    /* Transport row inside detail — [time] [▶] [time] */
+    .td-transport-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:8px;}
+    .td-time{font-family:var(--fm);font-size:12px;font-weight:500;color:var(--t2);min-width:36px;}
+    .td-time-right{text-align:right;}
+    .td-play-btn{width:44px;height:44px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation;box-shadow:0 2px 12px rgba(232,160,32,.35);}.td-play-btn:disabled{opacity:.3;pointer-events:none;}.td-play-btn:active{opacity:.85;}
     .td-notes-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px;}
     .td-notes-label{font-size:9px;color:var(--amber);letter-spacing:.12em;text-transform:uppercase;font-weight:500;margin-bottom:10px;}
     .td-notes-rev{color:var(--t3);text-transform:none;letter-spacing:normal;font-weight:normal;}
@@ -285,7 +300,7 @@ export default function Player(){
         </div>
       </div>
     </div>
-    <TrackDetail open={!!detailTrack} track={detailTrack||activeTrack} activeRevision={activeRevision} notes={notes} currentTime={currentTime} duration={duration} progress={progress} onSeek={handleSeek} onClose={()=>setDetailTrack(null)} onPost={postNote} onSeekToTime={seekToTime} onRevisionSelect={selectRevisionInDetail} userName={user?.email?.split('@')[0]||'You'}/>
+    <TrackDetail open={!!detailTrack} track={detailTrack||activeTrack} activeRevision={activeRevision} notes={notes} currentTime={currentTime} duration={duration} progress={progress} isPlaying={playing} onTogglePlay={togglePlay} onSeek={handleSeek} onClose={()=>setDetailTrack(null)} onPost={postNote} onSeekToTime={seekToTime} onRevisionSelect={selectRevisionInDetail} userName={user?.email?.split('@')[0]||'You'}/>
     <audio ref={audioRef} preload="metadata" onTimeUpdate={e=>setCurrentTime(e.target.currentTime)} onDurationChange={e=>{if(e.target.duration&&isFinite(e.target.duration))setDuration(e.target.duration);}} onEnded={()=>setPlaying(false)} onError={()=>{setDuration(0);setPlaying(false);}}/>
     {deleteTrackConfirm&&(<div className="overlay-bg" onClick={()=>setDeleteTrackConfirm(null)}><div className="confirm-box" onClick={e=>e.stopPropagation()}><div className="confirm-box-title">Delete “{deleteTrackConfirm.title}”?</div><div className="confirm-box-sub">Permanently deletes all revisions and notes. Cannot be undone.</div><div className="confirm-box-actions"><button className="btn-confirm-cancel" onClick={()=>setDeleteTrackConfirm(null)}>Keep it</button><button className="btn-confirm-delete" onClick={()=>deleteTrack(deleteTrackConfirm)}>Delete Forever</button></div></div></div>)}
     {rerunTrack&&(<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!rerunUploading&&setRerunTrack(null)}><div className="modal-scroll-inner"><div className="rev-modal"><div className="rev-modal-title">Rerun Mastering</div><div className="rerun-target">Track: <strong>{rerunTrack.title}</strong></div><p style={{fontSize:12,color:'var(--t2)',marginBottom:12,lineHeight:1.5}}>Choose a new setting. Same source audio, new mastering.</p><ToneGrid value={rerunTone} usedTones={rerunUsedTones} onChange={setRerunTone}/><div className="rev-modal-footer"><span className="rev-modal-status">{rerunStatus}</span><button className="btn-ghost-sm" disabled={rerunUploading} onClick={()=>setRerunTrack(null)}>Cancel</button><button className="btn-amber-sm" disabled={rerunTone===null||rerunUploading} onClick={submitRerun}>{rerunUploading?'Processing…':'Rerun Mastering'}</button></div></div></div></div>)}
