@@ -15,8 +15,7 @@ function Waveform({peaks,progress,notes,duration,onSeek}){const canvasRef=useRef
 function FixedDropdown({anchorRef,open,onClose,children}){const [pos,setPos]=useState({top:0,right:0});function recalc(){if(!anchorRef.current)return;const rect=anchorRef.current.getBoundingClientRect();setPos({top:rect.bottom+4,right:window.innerWidth-rect.right});}useEffect(()=>{if(!open)return;recalc();window.addEventListener('scroll',recalc,true);return()=>{window.removeEventListener('scroll',recalc,true);};},[open]);if(!open)return null;return(<><div style={{position:'fixed',inset:0,zIndex:998,background:'transparent'}} onClick={onClose}/><div style={{position:'fixed',top:pos.top,right:pos.right,zIndex:999,background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:10,minWidth:176,boxShadow:'0 8px 40px rgba(0,0,0,.6)',overflow:'hidden'}}>{children}</div></>);}
 function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const [hov,setHov]=useState(null);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span>← Darker</span><span style={{margin:'0 auto',color:'var(--amber)',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter →</span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);return(<button key={i} className={'tgm-cell'+(i===value?' active':'')+(i===4?' center':'')+(used?' used':'')} onMouseEnter={()=>!used&&setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}><span>{t.short}</span>{used&&<span className="tgm-used-dot">✓</span>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'var(--t3)',marginTop:6}}>✓ Already mastered — greyed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
 
-/* TRACK DETAIL MODAL — adds isPlaying + onTogglePlay */
-function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSeek,onClose,onPost,onSeekToTime,onRevisionSelect,userName}){
+function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,onRevisionSelect}){
   const [noteText,setNoteText]=useState('');
   const [posting,setPosting]=useState(false);
   const [lockedTime,setLockedTime]=useState(currentTime);
@@ -41,19 +40,25 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
         </div>
       </div>
       {revSwitcherOpen&&revisions.length>1&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
-      {/* Waveform + transport row */}
+      {/* Waveform + timecodes */}
       <div className="td-wave-wrap">
         <Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/>
-        <div className="td-transport-row">
-          <span className="td-time">{fmt(currentTime)}</span>
-          <button className="td-play-btn" onClick={onTogglePlay} disabled={!duration}>
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="#000">
-              {isPlaying
-                ?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>
-                :<polygon points="3,1 15,8 3,15"/>}
-            </svg>
-          </button>
-          <span className="td-time td-time-right">{fmt(duration)}</span>
+        <div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div>
+      </div>
+      {/* Full transport bar — mirrors the bottom bar on main page */}
+      <div className="td-modal-bar">
+        <div className="td-modal-transport">
+          <div className="td-transport-left">
+            <button className="ps-track-btn" onClick={onPrevTrack} disabled={!canPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,5 9,12 19,19"/><rect x="5" y="5" width="2.5" height="14" rx="1"/></svg></button>
+            <button className="ps-skip-btn" onClick={()=>onSkip(-10)} disabled={!duration}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg><span className="ps-skip-label">10</span></button>
+          </div>
+          <div className="td-transport-center">
+            <button className="ps-play-btn" onClick={onTogglePlay} disabled={!duration}><svg width="16" height="16" viewBox="0 0 16 16" fill="#000">{isPlaying?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>:<polygon points="3,1 15,8 3,15"/>}</svg></button>
+          </div>
+          <div className="td-transport-right">
+            <button className="ps-skip-btn" onClick={()=>onSkip(10)} disabled={!duration}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.95"/></svg><span className="ps-skip-label">10</span></button>
+            <button className="ps-track-btn" onClick={onNextTrack} disabled={!canNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,5 15,12 5,19"/><rect x="16.5" y="5" width="2.5" height="14" rx="1"/></svg></button>
+          </div>
         </div>
       </div>
       <div className="td-notes-scroll">
@@ -114,7 +119,7 @@ function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRena
         </div>
       </div>
       <div className="tr-actions">
-        <button className="tr-comment-btn" onClick={e=>{e.stopPropagation();onDetail(track);}} title="Notes & detail">
+        <button className="tr-comment-btn" onClick={e=>{e.stopPropagation();onDetail(track);}}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           {noteCount>0&&<span className="tr-note-count">{noteCount}</span>}
         </button>
@@ -166,7 +171,7 @@ export default function Player(){
   useEffect(()=>{const el=audioRef.current;if(!el)return;if(audioUrl){if(el.src!==audioUrl){el.src=audioUrl;el.load();setDuration(0);setCurrentTime(0);}}else{el.src='';el.load();setDuration(0);setCurrentTime(0);}},[audioUrl]);
   function playTrack(trackId){if(trackId===activeTrackId){if(audioRef.current){if(playing){audioRef.current.pause();setPlaying(false);}else{audioRef.current.play().catch(()=>{});setPlaying(true);}}return;}if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(trackId);const t=tracks.find(tr=>tr.id===trackId);if(!t)return;const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
   function openDetail(track){if(track.id!==activeTrackId){if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(track.id);const rev=track.revisions?.find(r=>r.is_active)||track.revisions?.[track.revisions.length-1]||null;setActiveRevision(rev);loadNotes(track.id,rev?.id);}setDetailTrack(track);}
-  function jumpToTrack(idx){if(idx<0||idx>=tracks.length)return;const t=tracks[idx];if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(t.id);const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);}
+  function jumpToTrack(idx){if(idx<0||idx>=tracks.length)return;const t=tracks[idx];if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(t.id);const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
   function togglePlay(){if(!audioRef.current)return;if(playing){audioRef.current.pause();setPlaying(false);}else{audioRef.current.play().catch(()=>{});setPlaying(true);}}
   function skip(secs){if(!audioRef.current)return;const t=Math.max(0,Math.min(duration||0,audioRef.current.currentTime+secs));audioRef.current.currentTime=t;setCurrentTime(t);}
   function handleSeek(pct){if(!audioRef.current||!duration)return;const t=pct*duration;audioRef.current.currentTime=t;setCurrentTime(t);}
@@ -189,6 +194,7 @@ export default function Player(){
     .ps-track-info{display:flex;align-items:center;gap:8px;margin-bottom:8px;}.ps-track-name{font-family:var(--fh);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;}.ps-rev-badge{font-size:9px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);color:var(--amber);white-space:nowrap;flex-shrink:0;}.ps-tone-badge{font-size:9px;padding:2px 7px;border-radius:4px;background:var(--surf2);border:1px solid var(--border2);color:var(--t3);white-space:nowrap;flex-shrink:0;}
     .ps-waveform{border-radius:8px;background:var(--surf2);padding:8px 10px 4px;}.ps-time-row{display:flex;justify-content:space-between;font-size:12px;font-weight:500;color:var(--t2);margin-top:4px;}
     .ps-no-track-top{font-size:12px;color:var(--t3);padding:8px 0;}
+    /* Main page fixed bottom transport — unchanged */
     .ps-controls-bar{position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 24px rgba(0,0,0,.6);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));}
     .ps-transport{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;}
     .ps-transport-left{display:flex;align-items:center;justify-content:flex-end;gap:14px;}
@@ -198,6 +204,7 @@ export default function Player(){
     .ps-skip-btn{width:44px;height:44px;border-radius:10px;background:transparent;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:var(--t2);-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}.ps-skip-btn:hover,.ps-skip-btn:active{color:var(--text);}.ps-skip-btn:disabled{opacity:.25;pointer-events:none;}
     .ps-skip-label{font-family:var(--fm);font-size:9px;font-weight:600;line-height:1;letter-spacing:.04em;}
     .ps-track-btn{width:40px;height:44px;border-radius:10px;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--t2);-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}.ps-track-btn:hover,.ps-track-btn:active{color:var(--text);}.ps-track-btn:disabled{opacity:.2;pointer-events:none;}
+    /* Track Detail Modal */
     .td-backdrop{position:fixed;inset:0;z-index:200;background:transparent;pointer-events:none;transition:background .2s;}
     .td-backdrop.td-open{background:rgba(0,0,0,.7);pointer-events:auto;}
     .td-modal{position:fixed;inset:0;z-index:201;background:var(--bg);display:flex;flex-direction:column;transform:translateY(100%);transition:transform .32s cubic-bezier(.32,.72,0,1);will-change:transform;}
@@ -214,11 +221,13 @@ export default function Player(){
     .td-rev-item{width:100%;padding:12px 16px;text-align:left;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--t2);font-family:var(--fm);cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;gap:10px;min-height:52px;}.td-rev-item:last-child{border-bottom:none;}.td-rev-item:hover,.td-rev-item:active{background:var(--surf3);}.td-rev-item.active{color:var(--amber);}
     .td-rev-item-label{font-size:14px;font-weight:600;color:var(--text);}.td-rev-item-tone{font-size:11px;color:var(--amber);}.td-rev-item-date{font-size:11px;color:var(--t3);margin-left:auto;}.td-rev-curr{font-size:9px;color:var(--amber);padding:2px 6px;background:var(--aglow);border-radius:4px;border:1px solid rgba(232,160,32,.25);}
     .td-wave-wrap{padding:12px 16px 10px;border-bottom:1px solid var(--border);background:var(--surf);flex-shrink:0;}
-    /* Transport row inside detail — [time] [▶] [time] */
-    .td-transport-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;gap:8px;}
-    .td-time{font-family:var(--fm);font-size:12px;font-weight:500;color:var(--t2);min-width:36px;}
-    .td-time-right{text-align:right;}
-    .td-play-btn{width:44px;height:44px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation;box-shadow:0 2px 12px rgba(232,160,32,.35);}.td-play-btn:disabled{opacity:.3;pointer-events:none;}.td-play-btn:active{opacity:.85;}
+    .td-time-row{display:flex;justify-content:space-between;font-size:12px;font-weight:500;color:var(--t2);margin-top:4px;}
+    /* Modal transport bar — same visual as ps-controls-bar, but inside the modal flex column */
+    .td-modal-bar{flex-shrink:0;background:var(--bg);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:8px 16px;}
+    .td-modal-transport{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;}
+    .td-transport-left{display:flex;align-items:center;justify-content:flex-end;gap:14px;}
+    .td-transport-center{display:flex;align-items:center;justify-content:center;padding:0 20px;}
+    .td-transport-right{display:flex;align-items:center;justify-content:flex-start;gap:14px;}
     .td-notes-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px;}
     .td-notes-label{font-size:9px;color:var(--amber);letter-spacing:.12em;text-transform:uppercase;font-weight:500;margin-bottom:10px;}
     .td-notes-rev{color:var(--t3);text-transform:none;letter-spacing:normal;font-weight:normal;}
@@ -266,7 +275,7 @@ export default function Player(){
     .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(10px);z-index:100;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom,24px);}.modal-scroll-inner{min-height:100%;display:flex;align-items:flex-start;justify-content:center;padding:20px 12px 32px;}.rev-modal{background:var(--surf);border:1px solid var(--border2);border-radius:16px;width:100%;max-width:560px;padding:20px;}.rev-modal-title{font-family:var(--fh);font-size:20px;margin-bottom:4px;}.rev-modal-sub{font-size:12px;color:var(--t2);margin-bottom:16px;line-height:1.5;}.rev-dropzone{border:2px dashed var(--border2);border-radius:10px;background:var(--surf2);padding:20px;text-align:center;cursor:pointer;font-size:13px;color:var(--t2);transition:all .2s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;margin-bottom:14px;}.rev-dropzone:hover,.rev-dropzone.over{border-color:var(--amber);background:var(--aglow);color:var(--amber);}.rev-file-list{display:flex;flex-direction:column;gap:10px;margin-bottom:14px;}.rev-file-row{background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:12px;}.rev-file-row-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;}.rev-file-row.is-new{border-color:rgba(100,180,255,.3);}.rev-file-name-input{flex:1;background:var(--bg);border:1.5px solid var(--border2);border-radius:8px;color:var(--text);font-family:var(--fm);font-size:16px!important;padding:9px 12px;outline:none;-webkit-appearance:none;}.rev-file-name-input:focus{border-color:var(--amber);}.rev-file-badge-new{font-size:9px;background:rgba(100,180,255,.1);color:#6ab4ff;border:1px solid rgba(100,180,255,.25);border-radius:4px;padding:2px 6px;white-space:nowrap;}.rev-file-badge-rev{font-size:9px;background:var(--aglow);color:var(--amber);border:1px solid rgba(232,160,32,.25);border-radius:4px;padding:2px 6px;white-space:nowrap;}.rev-file-ref{font-size:10px;color:var(--t3);font-style:italic;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.rev-file-remove{width:28px;height:28px;border-radius:50%;border:1px solid var(--border2);background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;-webkit-tap-highlight-color:transparent;}.rev-file-remove:hover{border-color:var(--red);color:var(--red);}.rev-modal-footer{border-top:1px solid var(--border);padding-top:14px;margin-top:4px;display:flex;align-items:center;gap:10px;}.rev-modal-status{font-size:11px;color:var(--t2);flex:1;}
     .rerun-target{font-size:13px;color:var(--t2);margin-bottom:14px;padding:10px 12px;background:var(--surf2);border-radius:8px;}.tgm-wrap{background:var(--surf3);border:1px solid var(--border2);border-radius:10px;padding:12px;}.tgm-axes{display:flex;font-size:9px;color:var(--t3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:8px;align-items:center;}.tgm-row-labels{display:flex;flex-direction:column;gap:4px;margin-right:6px;font-size:9px;color:var(--t3);}.tgm-row-labels div{height:40px;display:flex;align-items:center;justify-content:flex-end;white-space:nowrap;}.tgm-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;flex:1;}.tgm-cell{height:40px;border-radius:6px;border:1.5px solid var(--border2);background:var(--surf2);color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:10px;font-weight:600;transition:all .15s;-webkit-tap-highlight-color:transparent;touch-action:manipulation;position:relative;}.tgm-cell:hover:not(:disabled){border-color:var(--amber);color:var(--text);background:var(--aglow);}.tgm-cell.active{border-color:var(--amber);background:rgba(232,160,32,.18);color:var(--amber);}.tgm-cell.center{border-color:rgba(232,160,32,.3);}.tgm-cell.used{opacity:.3;cursor:not-allowed;background:var(--surf3);}.tgm-used-dot{position:absolute;top:2px;right:3px;font-size:8px;color:var(--t3);}.tgm-tip{margin-top:8px;padding:7px 10px;background:var(--surf2);border-radius:7px;min-height:36px;display:flex;flex-direction:column;gap:2px;}.tgm-tip-label{font-size:11px;color:var(--amber);font-weight:500;}.tgm-tip-desc{font-size:10px;color:var(--t2);}.tgm-set-all{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;}.tgm-set-all:hover{border-color:var(--amber);color:var(--amber);}
     .btn-amber-sm{font-family:var(--fm);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.btn-amber-sm:disabled{opacity:.35;pointer-events:none;}
-    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar{padding-left:24px;padding-right:24px;}}`}</style>
+    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar{padding-left:24px;padding-right:24px;}.td-modal-bar{padding-left:24px;padding-right:24px;}}`}</style>
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><a href="/" className="back">← Dashboard</a></div>
     <div className="ps-waveform-bar">
       {activeTrack?(<>
@@ -285,6 +294,7 @@ export default function Player(){
         {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
       </div>
     </div>
+    {/* Main page fixed transport bar — unchanged */}
     <div className="ps-controls-bar">
       <div className="ps-transport">
         <div className="ps-transport-left">
@@ -300,7 +310,7 @@ export default function Player(){
         </div>
       </div>
     </div>
-    <TrackDetail open={!!detailTrack} track={detailTrack||activeTrack} activeRevision={activeRevision} notes={notes} currentTime={currentTime} duration={duration} progress={progress} isPlaying={playing} onTogglePlay={togglePlay} onSeek={handleSeek} onClose={()=>setDetailTrack(null)} onPost={postNote} onSeekToTime={seekToTime} onRevisionSelect={selectRevisionInDetail} userName={user?.email?.split('@')[0]||'You'}/>
+    <TrackDetail open={!!detailTrack} track={detailTrack||activeTrack} activeRevision={activeRevision} notes={notes} currentTime={currentTime} duration={duration} progress={progress} isPlaying={playing} onTogglePlay={togglePlay} onSkip={skip} onPrevTrack={()=>jumpToTrack(activeIdx-1)} onNextTrack={()=>jumpToTrack(activeIdx+1)} canPrev={activeIdx>0} canNext={activeIdx>=0&&activeIdx<tracks.length-1} onSeek={handleSeek} onClose={()=>setDetailTrack(null)} onPost={postNote} onSeekToTime={seekToTime} onRevisionSelect={selectRevisionInDetail}/>
     <audio ref={audioRef} preload="metadata" onTimeUpdate={e=>setCurrentTime(e.target.currentTime)} onDurationChange={e=>{if(e.target.duration&&isFinite(e.target.duration))setDuration(e.target.duration);}} onEnded={()=>setPlaying(false)} onError={()=>{setDuration(0);setPlaying(false);}}/>
     {deleteTrackConfirm&&(<div className="overlay-bg" onClick={()=>setDeleteTrackConfirm(null)}><div className="confirm-box" onClick={e=>e.stopPropagation()}><div className="confirm-box-title">Delete “{deleteTrackConfirm.title}”?</div><div className="confirm-box-sub">Permanently deletes all revisions and notes. Cannot be undone.</div><div className="confirm-box-actions"><button className="btn-confirm-cancel" onClick={()=>setDeleteTrackConfirm(null)}>Keep it</button><button className="btn-confirm-delete" onClick={()=>deleteTrack(deleteTrackConfirm)}>Delete Forever</button></div></div></div>)}
     {rerunTrack&&(<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!rerunUploading&&setRerunTrack(null)}><div className="modal-scroll-inner"><div className="rev-modal"><div className="rev-modal-title">Rerun Mastering</div><div className="rerun-target">Track: <strong>{rerunTrack.title}</strong></div><p style={{fontSize:12,color:'var(--t2)',marginBottom:12,lineHeight:1.5}}>Choose a new setting. Same source audio, new mastering.</p><ToneGrid value={rerunTone} usedTones={rerunUsedTones} onChange={setRerunTone}/><div className="rev-modal-footer"><span className="rev-modal-status">{rerunStatus}</span><button className="btn-ghost-sm" disabled={rerunUploading} onClick={()=>setRerunTrack(null)}>Cancel</button><button className="btn-amber-sm" disabled={rerunTone===null||rerunUploading} onClick={submitRerun}>{rerunUploading?'Processing…':'Rerun Mastering'}</button></div></div></div></div>)}
