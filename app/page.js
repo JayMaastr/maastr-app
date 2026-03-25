@@ -129,14 +129,10 @@ function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, o
               </div>
             )}
           </div>
-          <button className={`tone-btn ${showTone?'active':''}`} onClick={()=>setShowTone(v=>!v)}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-              <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-            </svg>
-            <span>Mastering</span>
-            {track.tone!=null&&<span className="tone-badge-sm">{TONES[track.tone].short}</span>}
-          </button>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+              <button className={`tone-btn ${showTone?'active':''}`} onClick={()=>setShowTone(v=>!v)}>TONE GRID</button>
+              <span style={{fontSize:9,color:'var(--amber)',letterSpacing:'.04em',whiteSpace:'nowrap',textAlign:'center'}}>{TONES[track.tone]?.label||'Neutral + Normal'}</span>
+            </div>
           <button className="trv2-remove" onClick={onRemove}>×</button>
         </div>
         <div className="trv2-filename">
