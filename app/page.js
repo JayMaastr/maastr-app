@@ -83,7 +83,7 @@ function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){
   const [hov,setHov]=useState(null);
   const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];
   return(<div className="tgm-wrap">
-    <div className="tgm-axes"><span>\u2190 Warmer</span><span style={{margin:'0 auto',color:'var(--amber)',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter \u2192</span></div>
+    <div className="tgm-axes"><span>← Warmer</span><span style={{margin:'0 auto',color:'var(--amber)',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter →</span></div>
     <div style={{display:'flex',gap:6,alignItems:'flex-start'}}>
       <div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div>
       <div className="tgm-grid">
@@ -101,7 +101,7 @@ function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){
       </div>
     </div>
     <div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>
-    {usedTones.length>0&&<div style={{fontSize:10,color:'var(--t3)',marginTop:6}}>\u2713 Already mastered \u2014 crossed cells unavailable</div>}
+    {usedTones.length>0&&<div style={{fontSize:10,color:'var(--t3)',marginTop:6}}>✓ Already mastered — crossed cells unavailable</div>}
     {showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}
   </div>);}
 function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, onSetAll}) {
