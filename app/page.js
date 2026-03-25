@@ -9,17 +9,19 @@ const STABLE_PEAKS = (() => {
 })();
 
 const TONES = [
-  {label:'Dark + Loud',   short:'D+L', desc:'Heavy low end, maximum punch. Metal, hip-hop, EDM.'},
+  {label:'Warm + Loud',   short:'W+L', desc:'Heavy low end, maximum punch. Metal, hip-hop, EDM.'},
   {label:'Neutral + Loud',short:'N+L', desc:'Balanced but loud and competitive. Pop, rock, mainstream.'},
   {label:'Bright + Loud', short:'B+L', desc:'Aggressive and forward. Pop-punk, K-pop, high-energy.'},
-  {label:'Dark + Normal', short:'D+N', desc:'Warm, rich and cinematic. R&B, film scores, neo-soul.'},
+  {label:'Warm + Normal', short:'W+N', desc:'Warm, rich and cinematic. R&B, film scores, neo-soul.'},
   {label:'Neutral + Normal',short:'N+N',desc:'Balanced master for all genres. The safe default.'},
   {label:'Bright + Normal',short:'B+N',desc:'Clear and present. Great for vocals and acoustic.'},
-  {label:'Dark + Gentle', short:'D+G', desc:'Warm and intimate. Jazz, classical, acoustic folk.'},
+  {label:'Warm + Gentle', short:'W+G', desc:'Warm and intimate. Jazz, classical, acoustic folk.'},
   {label:'Neutral + Gentle',short:'N+G',desc:'Natural dynamics, no hype. Singer-songwriter, lo-fi.'},
   {label:'Bright + Gentle',short:'B+G', desc:'Airy and delicate. Ambient, new age, classical.'},
 ];
 const DEFAULT_TONE = 4;
+const TONE_BG=['rgba(232,160,32,0.82)','rgba(190,190,210,0.70)','rgba(60,180,255,0.78)','rgba(232,160,32,0.55)','rgba(160,160,185,0.48)','rgba(60,180,255,0.52)','rgba(232,160,32,0.28)','rgba(130,130,155,0.25)','rgba(60,180,255,0.26)'];
+const TONE_BORDER=['#c47800','#7878a0','#0099dd','#c47800','#7878a0','#0099dd','#c47800','#7878a0','#0099dd'];
 
 function getToneMemory(name) {
   try{const v=localStorage.getItem('mt_'+name.toLowerCase().replace(/\s+/g,'_'));return v!=null?parseInt(v):DEFAULT_TONE;}catch{return DEFAULT_TONE;}
@@ -77,40 +79,31 @@ function WaveformCanvas({peaks}) {
   return <canvas ref={ref} style={{display:'block',width:'100%',height:'100%'}}/>;
 }
 
-function ToneGrid({value, onChange, onSetAll, showSetAll}) {
-  const [hovered, setHovered] = useState(null);
-  const tip = TONES[hovered != null ? hovered : value];
-  const rows = ['LOUDER','NORMAL','GENTLER'];
-  return (
-    <div className="tone-grid-wrap">
-      <div className="tone-axis-top">
-        <span className="tone-axis-label">← DARKER</span>
-        <span className="tone-axis-label" style={{margin:'0 auto'}}>TONE GRID</span>
-        <span className="tone-axis-label">BRIGHTER →</span>
+function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){
+  const [hov,setHov]=useState(null);
+  const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];
+  return(<div className="tgm-wrap">
+    <div className="tgm-axes"><span>\u2190 Warmer</span><span style={{margin:'0 auto',color:'var(--amber)',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter \u2192</span></div>
+    <div style={{display:'flex',gap:6,alignItems:'flex-start'}}>
+      <div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div>
+      <div className="tgm-grid">
+        {TONES.map((t,i)=>{
+          const used=usedTones.includes(i);
+          const isActive=i===value;
+          return(<button key={i}
+            className={'tgm-cell'+(isActive?' active':'')+(used?' used':'')}
+            style={{background:TONE_BG[i],borderColor:isActive||i===hov?TONE_BORDER[i]:'rgba(0,0,0,0.2)',borderWidth:isActive?'2.5px':'1.5px',opacity:used?0.55:1,cursor:used?'not-allowed':'pointer'}}
+            onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}
+            onClick={()=>!used&&onChange(i)} disabled={used}>
+            {used&&(<svg width="18" height="18" viewBox="0 0 18 18" style={{position:'absolute',pointerEvents:'none'}}><line x1="3" y1="3" x2="15" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/><line x1="15" y1="3" x2="3" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/></svg>)}
+          </button>);
+        })}
       </div>
-      <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
-        <div className="tone-row-labels">
-          {rows.map(r=><div key={r} className="tone-row-label">{r}</div>)}
-        </div>
-        <div className="tone-grid">
-          {TONES.map((t,i)=>(
-            <button key={i} className={`tone-cell ${i===value?'active':''} ${i===4?'center':''}`}
-              onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}
-              onClick={()=>onChange(i)}>
-              <span className="tone-cell-short">{t.short}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="tone-tip">
-        <span className="tone-tip-label">{tip.label}</span>
-        <span className="tone-tip-desc">{tip.desc}</span>
-      </div>
-      {showSetAll&&<button className="set-all-btn" onClick={()=>onSetAll(value)}>Set all tracks to this setting</button>}
     </div>
-  );
-}
-
+    <div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>
+    {usedTones.length>0&&<div style={{fontSize:10,color:'var(--t3)',marginTop:6}}>\u2713 Already mastered \u2014 crossed cells unavailable</div>}
+    {showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}
+  </div>);}
 function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, onSetAll}) {
   const [showTone,setShowTone]=useState(false);
   const [suggestions,setSuggestions]=useState([]);
