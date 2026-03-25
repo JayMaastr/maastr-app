@@ -14,8 +14,6 @@ async function computePeaks(file,n=200){try{const ab=await file.arrayBuffer();co
 function Waveform({peaks,progress,notes,duration,onSeek}){const canvasRef=useRef(null),rafRef=useRef(null),progressRef=useRef(progress);useEffect(()=>{progressRef.current=progress;},[progress]);const stablePeaks=useRef(FALLBACK_PEAKS);if(peaks&&peaks.length>4)stablePeaks.current=peaks;useEffect(()=>{const canvas=canvasRef.current;if(!canvas)return;const dpr=window.devicePixelRatio||1,W=canvas.parentElement?.offsetWidth||600,H=72;canvas.width=W*dpr;canvas.height=H*dpr;canvas.style.width=W+'px';canvas.style.height=H+'px';const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);const data=stablePeaks.current,BAR=2,GAP=1,STEP=BAR+GAP,numBars=Math.floor(W/STEP),cy=H/2;const heights=new Float32Array(numBars);for(let i=0;i<numBars;i++){const pi=Math.floor(i/numBars*data.length);heights[i]=Math.max(2,data[Math.min(pi,data.length-1)]*(cy-5));}const nc=document.createElement('canvas');nc.width=W;nc.height=H;const nctx=nc.getContext('2d');if(notes&&notes.length&&duration>0){notes.forEach(n=>{if(n.timestamp_sec==null||n.timestamp_sec>duration)return;const x=(n.timestamp_sec/duration)*W;nctx.save();nctx.strokeStyle='rgba(255,255,255,0.25)';nctx.lineWidth=1;nctx.setLineDash([2,3]);nctx.beginPath();nctx.moveTo(x,3);nctx.lineTo(x,H-3);nctx.stroke();nctx.restore();nctx.fillStyle='#e8a020';nctx.beginPath();nctx.arc(x,3,3,0,Math.PI*2);nctx.fill();});}let lastPlayX=-999;function draw(){const prog=Math.max(0,Math.min(1,progressRef.current||0)),playX=prog*W;if(Math.abs(playX-lastPlayX)>=.5){lastPlayX=playX;const cutBar=Math.floor(prog*numBars);ctx.clearRect(0,0,W,H);for(let i=0;i<numBars;i++){const h=heights[i];ctx.fillStyle=i<cutBar?'rgba(232,160,32,1)':'rgba(232,160,32,0.2)';ctx.fillRect(i*STEP,cy-h,BAR,h*2);}ctx.drawImage(nc,0,0);if(prog>.001){const px=Math.round(playX);ctx.save();ctx.shadowColor='rgba(232,160,32,0.8)';ctx.shadowBlur=8;ctx.fillStyle='#fff';ctx.fillRect(px-1,0,2,H);ctx.fillStyle='#ffcc44';ctx.beginPath();ctx.arc(px,3,4,0,Math.PI*2);ctx.fill();ctx.restore();}}rafRef.current=requestAnimationFrame(draw);}draw();return()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);};},[notes,duration]);return(<div onClick={e=>{if(!onSeek)return;const r=e.currentTarget.getBoundingClientRect();onSeek(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)));}} style={{width:'100%',height:72,cursor:'crosshair',userSelect:'none',WebkitUserSelect:'none'}}><canvas ref={canvasRef} style={{display:'block',width:'100%',height:72}}/></div>);}
 function FixedDropdown({anchorRef,open,onClose,children}){const [pos,setPos]=useState({top:0,right:0});function recalc(){if(!anchorRef.current)return;const rect=anchorRef.current.getBoundingClientRect();setPos({top:rect.bottom+4,right:window.innerWidth-rect.right});}useEffect(()=>{if(!open)return;recalc();window.addEventListener('scroll',recalc,true);return()=>{window.removeEventListener('scroll',recalc,true);};},[open]);if(!open)return null;return(<><div style={{position:'fixed',inset:0,zIndex:998,background:'transparent'}} onClick={onClose}/><div style={{position:'fixed',top:pos.top,right:pos.right,zIndex:999,background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:10,minWidth:176,boxShadow:'0 8px 40px rgba(0,0,0,.6)',overflow:'hidden'}}>{children}</div></>);}
 function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const [hov,setHov]=useState(null);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span>← Darker</span><span style={{margin:'0 auto',color:'var(--amber)',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter →</span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);return(<button key={i} className={'tgm-cell'+(i===value?' active':'')+(i===4?' center':'')+(used?' used':'')} onMouseEnter={()=>!used&&setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}><span>{t.short}</span>{used&&<span className="tgm-used-dot">✓</span>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'var(--t3)',marginTop:6}}>✓ Already mastered — greyed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
-
-/* TRACK DETAIL MODAL — full screen slide-up */
 function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progress,onSeek,onClose,onPost,onSeekToTime,onRevisionSelect,userName}){
   const [noteText,setNoteText]=useState('');
   const [posting,setPosting]=useState(false);
@@ -24,15 +22,11 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
   const inputRef=useRef(null);
   const revisions=track?[...(track.revisions||[])].sort((a,b)=>(b.version_number||0)-(a.version_number||0)):[];
   const displayRev=activeRevision||(revisions.find(r=>r.is_active)||revisions[0]||null);
-
-  // Lock timecode when user taps the add-note area
   function focusNote(){setLockedTime(currentTime);setTimeout(()=>inputRef.current?.focus(),60);}
   async function handlePost(){if(!noteText.trim()||posting)return;setPosting(true);await onPost(noteText.trim(),lockedTime);setNoteText('');setPosting(false);}
-
   return(<>
     <div className={'td-backdrop'+(open?' td-open':'')} onClick={onClose}/>
     <div className={'td-modal'+(open?' td-open':'')}>
-      {/* Header */}
       <div className="td-header">
         <button className="td-close" onClick={onClose}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         <div className="td-title-block">
@@ -44,14 +38,11 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
           </div>}
         </div>
       </div>
-      {/* Version switcher */}
       {revSwitcherOpen&&revisions.length>1&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
-      {/* Waveform */}
       <div className="td-wave-wrap">
         <Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/>
         <div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div>
       </div>
-      {/* Notes */}
       <div className="td-notes-scroll">
         {notes.length>0?(<>
           <div className="td-notes-label">NOTES{displayRev&&<span className="td-notes-rev"> — {displayRev.label||'v1'}</span>}</div>
@@ -65,7 +56,6 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
           </div>))}
         </>):(<div className="td-notes-empty">No notes yet — add the first one below</div>)}
       </div>
-      {/* Fixed add-note bar */}
       <div className="td-compose">
         {noteText?(<>
           <textarea ref={inputRef} className="td-compose-textarea" value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder={"Note at "+fmt(lockedTime)+"…"} rows={2} onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))handlePost();}} autoFocus/>
@@ -111,12 +101,10 @@ function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRena
         </div>
       </div>
       <div className="tr-actions">
-        {/* Comment button — opens detail */}
         <button className="tr-comment-btn" onClick={e=>{e.stopPropagation();onDetail(track);}} title="Notes & detail">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           {noteCount>0&&<span className="tr-note-count">{noteCount}</span>}
         </button>
-        {/* ⋯ menu */}
         <div style={{position:'relative'}}>
           <button ref={menuBtnRef} className="tr-menu-btn" onClick={e=>{e.stopPropagation();setMenuOpen(o=>!o);}}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
@@ -135,7 +123,7 @@ function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRena
   </div>);}
 export default function Player(){
   const [user,setUser]=useState(null);const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);const audioRef=useRef(null);
-  const [detailTrack,setDetailTrack]=useState(null); // which track's detail modal is open
+  const [detailTrack,setDetailTrack]=useState(null);
   const [showRevModal,setShowRevModal]=useState(false);const [revFiles,setRevFiles]=useState([]);const [revDragging,setRevDragging]=useState(false);const [revUploading,setRevUploading]=useState(false);const [revStatus,setRevStatus]=useState('');
   const [rerunTrack,setRerunTrack]=useState(null);const [rerunTone,setRerunTone]=useState(null);const [rerunUploading,setRerunUploading]=useState(false);const [rerunStatus,setRerunStatus]=useState('');
   const [deleteTrackConfirm,setDeleteTrackConfirm]=useState(null);
@@ -167,12 +155,10 @@ export default function Player(){
   const rerunUsedTones=rerunTrack?(rerunTrack.revisions||[]).map(r=>r.tone_setting).filter(t=>t!=null):[];
   return(<>
     <style>{`*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}:root{--bg:#0a0a0b;--surf:#111113;--surf2:#16161a;--surf3:#1e1e24;--border:#24242c;--border2:#2e2e38;--amber:#e8a020;--aglow:rgba(232,160,32,0.08);--text:#f0ede8;--t2:#8a8780;--t3:#4a4945;--red:#e05050;--fh:'DM Serif Display',Georgia,serif;--fm:'DM Mono','SF Mono','Menlo',monospace;}input,textarea,select{font-size:16px!important;-webkit-text-size-adjust:100%;}html,body{background:var(--bg);color:var(--text);font-family:var(--fm);-webkit-font-smoothing:antialiased;}
-    /* WAVEFORM BAR — sticky top */
     .ps-waveform-bar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px 8px;box-shadow:0 2px 20px rgba(0,0,0,.5);}
-    .ps-track-info{display:flex;align-items:center;gap:8px;margin-bottom:8px;}.ps-track-name{font-family:var(--fh);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}.ps-rev-badge{font-size:9px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);color:var(--amber);white-space:nowrap;}.ps-tone-badge{font-size:9px;padding:2px 7px;border-radius:4px;background:var(--surf2);border:1px solid var(--border2);color:var(--t3);white-space:nowrap;}
+    .ps-track-info{display:flex;align-items:center;gap:8px;margin-bottom:8px;}.ps-track-name{font-family:var(--fh);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;}.ps-rev-badge{font-size:9px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);color:var(--amber);white-space:nowrap;flex-shrink:0;}.ps-tone-badge{font-size:9px;padding:2px 7px;border-radius:4px;background:var(--surf2);border:1px solid var(--border2);color:var(--t3);white-space:nowrap;flex-shrink:0;}
     .ps-waveform{border-radius:8px;background:var(--surf2);padding:8px 10px 4px;}.ps-time-row{display:flex;justify-content:space-between;font-size:12px;font-weight:500;color:var(--t2);margin-top:4px;}
     .ps-no-track-top{font-size:12px;color:var(--t3);padding:8px 0;}
-    /* CONTROLS BAR — fixed bottom */
     .ps-controls-bar{position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 24px rgba(0,0,0,.6);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));}
     .ps-transport{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;}
     .ps-transport-left{display:flex;align-items:center;justify-content:flex-end;gap:14px;}
@@ -182,21 +168,18 @@ export default function Player(){
     .ps-skip-btn{width:44px;height:44px;border-radius:10px;background:transparent;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:var(--t2);-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}.ps-skip-btn:hover,.ps-skip-btn:active{color:var(--text);}.ps-skip-btn:disabled{opacity:.25;pointer-events:none;}
     .ps-skip-label{font-family:var(--fm);font-size:9px;font-weight:600;line-height:1;letter-spacing:.04em;}
     .ps-track-btn{width:40px;height:44px;border-radius:10px;background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--t2);-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}.ps-track-btn:hover,.ps-track-btn:active{color:var(--text);}.ps-track-btn:disabled{opacity:.2;pointer-events:none;}
-    /* TRACK DETAIL MODAL */
     .td-backdrop{position:fixed;inset:0;z-index:200;background:transparent;pointer-events:none;transition:background .2s;}
     .td-backdrop.td-open{background:rgba(0,0,0,.7);pointer-events:auto;}
     .td-modal{position:fixed;inset:0;z-index:201;background:var(--bg);display:flex;flex-direction:column;transform:translateY(100%);transition:transform .32s cubic-bezier(.32,.72,0,1);will-change:transform;}
     .td-modal.td-open{transform:translateY(0);}
     .td-header{display:flex;align-items:flex-start;gap:12px;padding:14px 16px 10px;border-bottom:1px solid var(--border);flex-shrink:0;}
-    .td-close{width:36px;height:36px;border-radius:9px;border:1px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
-    .td-close:hover{color:var(--text);}
+    .td-close{width:36px;height:36px;border-radius:9px;border:1px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent;}.td-close:hover{color:var(--text);}
     .td-title-block{flex:1;min-width:0;}
     .td-track-name{font-family:var(--fh);font-size:18px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px;}
     .td-rev-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
     .td-rev-badge{font-size:10px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);color:var(--amber);}
     .td-tone-badge{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--surf2);border:1px solid var(--border2);color:var(--t3);}
-    .td-rev-switch{font-family:var(--fm);font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;}
-    .td-rev-switch:hover{border-color:var(--amber);color:var(--amber);}
+    .td-rev-switch{font-family:var(--fm);font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;}.td-rev-switch:hover{border-color:var(--amber);color:var(--amber);}
     .td-rev-list{background:var(--surf2);border-bottom:1px solid var(--border);flex-shrink:0;}
     .td-rev-item{width:100%;padding:12px 16px;text-align:left;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--t2);font-family:var(--fm);cursor:pointer;-webkit-tap-highlight-color:transparent;display:flex;align-items:center;gap:10px;min-height:52px;}.td-rev-item:last-child{border-bottom:none;}.td-rev-item:hover,.td-rev-item:active{background:var(--surf3);}.td-rev-item.active{color:var(--amber);}
     .td-rev-item-label{font-size:14px;font-weight:600;color:var(--text);}.td-rev-item-tone{font-size:11px;color:var(--amber);}.td-rev-item-date{font-size:11px;color:var(--t3);margin-left:auto;}.td-rev-curr{font-size:9px;color:var(--amber);padding:2px 6px;background:var(--aglow);border-radius:4px;border:1px solid rgba(232,160,32,.25);}
@@ -212,7 +195,6 @@ export default function Player(){
     .td-note-body{font-size:13px;color:#c8c4be;line-height:1.6;}
     .td-note-date{display:block;font-size:10px;color:var(--t3);margin-top:3px;}
     .td-notes-empty{font-size:13px;color:var(--t3);padding:16px 0;text-align:center;}
-    /* compose bar — fixed at bottom of modal */
     .td-compose{flex-shrink:0;border-top:1px solid var(--border);padding:10px 16px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--surf);}
     .td-compose-trigger{display:flex;align-items:center;gap:8px;width:100%;padding:13px 16px;border-radius:12px;border:1.5px dashed var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .15s;text-align:left;}.td-compose-trigger:hover,.td-compose-trigger:active{border-color:var(--amber);color:var(--amber);background:var(--aglow);}.td-compose-trigger strong{color:var(--text);}
     .td-compose-textarea{width:100%;background:var(--surf2);border:1.5px solid var(--amber);border-radius:12px;padding:12px 14px;color:var(--text);font-family:var(--fm);font-size:16px!important;resize:none;outline:none;-webkit-appearance:none;line-height:1.5;margin-bottom:8px;display:block;}
@@ -220,17 +202,14 @@ export default function Player(){
     .td-compose-ts{font-family:var(--fm);font-size:12px;font-weight:600;padding:3px 10px;background:var(--amber);color:#000;border-radius:6px;flex-shrink:0;}
     .td-compose-cancel{font-family:var(--fm);font-size:13px;padding:8px 14px;border-radius:9px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;margin-left:auto;}
     .td-compose-post{font-family:var(--fm);font-size:13px;font-weight:600;padding:8px 18px;border-radius:9px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;}.td-compose-post:disabled{opacity:.35;pointer-events:none;}
-    /* CLEAN TRACK LIST */
     .topbar{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--surf);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:20;}.logo{font-family:var(--fh);font-size:17px;color:var(--text);text-decoration:none;}.logo em{color:var(--amber);font-style:normal;}.breadcrumb{font-size:12px;color:var(--t2);margin-left:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}.back{font-size:11px;color:var(--t2);text-decoration:none;padding:5px 10px;border-radius:7px;border:1px solid var(--border2);white-space:nowrap;-webkit-tap-highlight-color:transparent;}.back:hover{color:var(--text);}
     .page{padding:12px 12px 120px;}.page-header{padding:12px 0 16px;}.proj-title{font-family:var(--fh);font-size:clamp(20px,5vw,30px);margin-bottom:2px;}.proj-artist{font-size:11px;color:var(--t2);margin-bottom:14px;}.top-actions{display:flex;gap:8px;}.btn-upload-rev{display:flex;align-items:center;gap:6px;font-family:var(--fm);font-size:13px;font-weight:500;padding:10px 16px;border-radius:9px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
-    /* Track rows */
     .tracks-lbl{font-size:10px;color:var(--t3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px;}
-    .tr-row{border-bottom:1px solid var(--border);background:var(--surf);}
-    .tr-row:first-of-type{border-top:1px solid var(--border);border-radius:12px 12px 0 0;}
-    .tr-row:last-of-type{border-radius:0 0 12px 12px;}
-    .tr-row:only-of-type{border-radius:12px;}
+    /* Track rows — THE FIX: .tr-play-zone gets min-width:0 */
+    .tr-row{display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surf);}
+    .tr-row:last-child{border-bottom:none;}
     .tr-row.tr-active{background:var(--surf2);}
-    .tr-play-zone{display:flex;align-items:center;gap:0;flex:1;cursor:pointer;-webkit-tap-highlight-color:transparent;padding:14px 0 14px 12px;min-height:60px;}
+    .tr-play-zone{display:flex;align-items:center;flex:1;min-width:0;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:14px 0 14px 12px;min-height:60px;}
     .tr-num-play{width:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
     .tr-idx{font-family:var(--fm);font-size:12px;color:var(--t3);}
     .tr-playing-icon{animation:pulse 1.2s ease-in-out infinite alternate;}
@@ -239,16 +218,14 @@ export default function Player(){
     .tr-name{font-family:var(--fh);font-size:16px;color:var(--text);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .tr-meta{display:flex;align-items:center;gap:8px;margin-top:2px;}
     .tr-rev{font-size:10px;color:var(--t3);}
-    .tr-row{display:flex;align-items:center;}
     .tr-actions{display:flex;align-items:center;gap:2px;padding-right:8px;flex-shrink:0;}
-    .tr-comment-btn{position:relative;width:40px;height:44px;border-radius:9px;border:none;background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.tr-comment-btn:hover,.tr-comment-btn:active{color:var(--t2);}
+    .tr-comment-btn{position:relative;width:40px;height:44px;border-radius:9px;border:none;background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;flex-shrink:0;}.tr-comment-btn:hover,.tr-comment-btn:active{color:var(--t2);}
     .tr-note-count{position:absolute;top:6px;right:4px;font-size:8px;font-weight:700;background:var(--amber);color:#000;border-radius:8px;padding:1px 4px;font-family:var(--fm);min-width:14px;text-align:center;}
-    .tr-menu-btn{width:36px;height:44px;border-radius:9px;border:none;background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:0;}.tr-menu-btn:hover,.tr-menu-btn:active{color:var(--t2);}
-    .tr-rename{display:flex;gap:6px;align-items:center;padding:10px 12px;flex:1;}
-    .tr-rename-input{flex:1;background:var(--bg);border:2px solid var(--amber);border-radius:8px;color:var(--text);font-family:var(--fh);font-size:16px;padding:7px 11px;outline:none;-webkit-appearance:none;min-width:0;}
+    .tr-menu-btn{width:36px;height:44px;border-radius:9px;border:none;background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;padding:0;flex-shrink:0;}.tr-menu-btn:hover,.tr-menu-btn:active{color:var(--t2);}
+    .tr-rename{display:flex;gap:6px;align-items:center;padding:10px 12px;flex:1;min-width:0;}
+    .tr-rename-input{flex:1;min-width:0;background:var(--bg);border:2px solid var(--amber);border-radius:8px;color:var(--text);font-family:var(--fh);font-size:16px;padding:7px 11px;outline:none;-webkit-appearance:none;}
     .tr-rename-save{font-family:var(--fm);font-size:12px;font-weight:500;padding:7px 14px;border-radius:7px;background:var(--amber);color:#000;border:none;cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
     .tr-rename-cancel{font-family:var(--fm);font-size:12px;padding:7px 12px;border-radius:7px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;}
-    /* Shared dropdown + modal styles */
     .tdrop-item{width:100%;padding:14px 16px;display:flex;align-items:center;gap:10px;font-family:var(--fm);font-size:14px;color:var(--t2);background:transparent;border:none;cursor:pointer;text-align:left;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.tdrop-item:hover,.tdrop-item:active{background:var(--surf3);color:var(--text);}.tdrop-item.danger{color:#e08080;}.tdrop-item.danger:hover,.tdrop-item.danger:active{background:rgba(224,80,80,.08);color:var(--red);}.tdrop-divider{height:1px;background:var(--border);margin:2px 0;}
     .rev-action-panel{padding:14px;border-top:1px solid var(--border);background:var(--surf2);}.rev-action-label{font-size:10px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;}.rev-del-row{width:100%;padding:14px 12px;text-align:left;background:var(--surf);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--fm);cursor:pointer;margin-bottom:8px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;-webkit-tap-highlight-color:transparent;touch-action:manipulation;min-height:52px;}.rev-del-row:hover,.rev-del-row:active{border-color:var(--red);background:rgba(224,80,80,.05);}.rev-del-row-label{font-size:14px;font-weight:600;}.rev-del-row-tone{font-size:11px;color:var(--amber);}.rev-del-row-date{font-size:11px;color:var(--t3);margin-left:auto;}.rev-del-row-active{font-size:9px;color:#6ab4ff;padding:2px 7px;background:rgba(100,180,255,.1);border-radius:4px;border:1px solid rgba(100,180,255,.25);}.rev-del-confirm-title{font-family:var(--fh);font-size:17px;margin-bottom:8px;}.rev-del-confirm-sub{font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:14px;}.rev-del-actions{display:flex;gap:8px;justify-content:flex-end;}
     .btn-ghost-sm{font-family:var(--fm);font-size:13px;padding:8px 14px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.btn-delete-sm{font-family:var(--fm);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--red);color:#fff;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
@@ -258,14 +235,12 @@ export default function Player(){
     .btn-amber-sm{font-family:var(--fm);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.btn-amber-sm:disabled{opacity:.35;pointer-events:none;}
     @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar{padding-left:24px;padding-right:24px;}}`}</style>
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><a href="/" className="back">← Dashboard</a></div>
-    {/* Sticky waveform top */}
     <div className="ps-waveform-bar">
       {activeTrack?(<>
         <div className="ps-track-info"><span className="ps-track-name">{activeTrack.title}</span>{activeRevision&&<span className="ps-rev-badge">{activeRevision.label||'v1'}</span>}{(activeRevision?.tone_label||activeTrack.tone_label)&&<span className="ps-tone-badge">{activeRevision?.tone_label||activeTrack.tone_label}</span>}</div>
         <div className="ps-waveform"><Waveform peaks={activeTrack.peaks} progress={progress} notes={notes} duration={duration} onSeek={handleSeek}/><div className="ps-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
       </>):(<div className="ps-no-track-top">Tap a track to start listening</div>)}
     </div>
-    {/* Clean track list */}
     <div className="page">
       <div className="page-header">
         <div className="proj-title">{project?.title}</div>
@@ -274,29 +249,24 @@ export default function Player(){
       </div>
       <div className="tracks-lbl">{tracks.length} {tracks.length===1?'track':'tracks'}</div>
       <div style={{borderRadius:12,overflow:'hidden',border:'1px solid var(--border)'}}>
-        {tracks.map((track,idx)=>{
-          const tNotes=activeTrackId===track.id?notes:[];
-          return(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} noteCount={track.id===activeTrackId?notes.length:(track._noteCount||0)} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>);
-        })}
+        {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} noteCount={activeTrackId===track.id?notes.length:0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
       </div>
     </div>
-    {/* Fixed transport controls */}
     <div className="ps-controls-bar">
       <div className="ps-transport">
         <div className="ps-transport-left">
-          <button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx-1)} disabled={!activeTrack||activeIdx<=0} title="Previous track"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,5 9,12 19,19"/><rect x="5" y="5" width="2.5" height="14" rx="1"/></svg></button>
-          <button className="ps-skip-btn" onClick={()=>skip(-10)} disabled={!audioUrl} title="Back 10s"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg><span className="ps-skip-label">10</span></button>
+          <button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx-1)} disabled={!activeTrack||activeIdx<=0}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,5 9,12 19,19"/><rect x="5" y="5" width="2.5" height="14" rx="1"/></svg></button>
+          <button className="ps-skip-btn" onClick={()=>skip(-10)} disabled={!audioUrl}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg><span className="ps-skip-label">10</span></button>
         </div>
         <div className="ps-transport-center">
           <button className="ps-play-btn" onClick={togglePlay} disabled={!audioUrl}><svg width="16" height="16" viewBox="0 0 16 16" fill="#000">{playing?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>:<polygon points="3,1 15,8 3,15"/>}</svg></button>
         </div>
         <div className="ps-transport-right">
-          <button className="ps-skip-btn" onClick={()=>skip(10)} disabled={!audioUrl} title="Forward 10s"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.95"/></svg><span className="ps-skip-label">10</span></button>
-          <button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx+1)} disabled={!activeTrack||activeIdx<0||activeIdx>=tracks.length-1} title="Next track"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,5 15,12 5,19"/><rect x="16.5" y="5" width="2.5" height="14" rx="1"/></svg></button>
+          <button className="ps-skip-btn" onClick={()=>skip(10)} disabled={!audioUrl}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-.49-3.95"/></svg><span className="ps-skip-label">10</span></button>
+          <button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx+1)} disabled={!activeTrack||activeIdx<0||activeIdx>=tracks.length-1}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,5 15,12 5,19"/><rect x="16.5" y="5" width="2.5" height="14" rx="1"/></svg></button>
         </div>
       </div>
     </div>
-    {/* Track detail modal */}
     <TrackDetail open={!!detailTrack} track={detailTrack||activeTrack} activeRevision={activeRevision} notes={notes} currentTime={currentTime} duration={duration} progress={progress} onSeek={handleSeek} onClose={()=>setDetailTrack(null)} onPost={postNote} onSeekToTime={seekToTime} onRevisionSelect={selectRevisionInDetail} userName={user?.email?.split('@')[0]||'You'}/>
     <audio ref={audioRef} preload="metadata" onTimeUpdate={e=>setCurrentTime(e.target.currentTime)} onDurationChange={e=>{if(e.target.duration&&isFinite(e.target.duration))setDuration(e.target.duration);}} onEnded={()=>setPlaying(false)} onError={()=>{setDuration(0);setPlaying(false);}}/>
     {deleteTrackConfirm&&(<div className="overlay-bg" onClick={()=>setDeleteTrackConfirm(null)}><div className="confirm-box" onClick={e=>e.stopPropagation()}><div className="confirm-box-title">Delete “{deleteTrackConfirm.title}”?</div><div className="confirm-box-sub">Permanently deletes all revisions and notes. Cannot be undone.</div><div className="confirm-box-actions"><button className="btn-confirm-cancel" onClick={()=>setDeleteTrackConfirm(null)}>Keep it</button><button className="btn-confirm-delete" onClick={()=>deleteTrack(deleteTrackConfirm)}>Delete Forever</button></div></div></div>)}
