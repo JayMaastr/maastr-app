@@ -77,7 +77,7 @@ export default function PricingPage() {
         .pcdesc{font-size:12px;color:var(--t2);line-height:1.6;margin:12px 0 20px;flex:1;}
         .pcfeats{list-style:none;display:flex;flex-direction:column;gap:10px;margin-bottom:28px;}
         .pcfeats li{font-size:12px;display:flex;align-items:flex-start;gap:8px;color:var(--t2);}
-        .pcfeats li::before{content:'\2713';color:var(--amber);flex-shrink:0;font-weight:600;}
+        .pcfeats li::before{content:'✓';color:var(--amber);flex-shrink:0;font-weight:600;}
         .pcbtn{padding:12px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--text);font-family:var(--fm);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent;width:100%;}
         .pcbtn:hover:not(:disabled){border-color:var(--amber);color:var(--amber);}
         .pcbtn:disabled{opacity:.5;cursor:not-allowed;}
@@ -116,7 +116,7 @@ export default function PricingPage() {
                 <button className="pcbtn" onClick={()=>handleSelect(t.id)} disabled={isCurrent}>
                   {isCurrent?'Current Plan':t.cta}
                 </button>
-                {isCurrent&&<div className="pccur">\u2713 Your current plan</div>}
+                {isCurrent&&<div className="pccur">✓ Your current plan</div>}
               </div>
             );
           })}
