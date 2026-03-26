@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { 
+import { useRouter } from 'next/navigation';useState, useEffect, useRef, useCallback } from 'react';
 import { sb } from '@/lib/supabase';
 
 // Global notification center API - callable from anywhere in the app
@@ -9,6 +10,7 @@ import { sb } from '@/lib/supabase';
 // window.nc_openToUploads()
 
 export default function NotificationCenter({ user }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('new'); // 'new' | 'read' | 'uploads'
   const [notes, setNotes] = useState([]);
@@ -20,7 +22,7 @@ export default function NotificationCenter({ user }) {
     if (!user) return;
     const { data } = await sb
       .from('notes')
-      .select('id,body,author_name,timestamp_label,created_at,resolved,project_id,projects(title)')
+      .select('id,body,author_name,timestamp_label,timestamp_sec,created_at,resolved,project_id,track_id,projects(title)')
       .order('created_at', { ascending: false })
       .limit(50);
     setNotes(data || []);
@@ -95,6 +97,20 @@ export default function NotificationCenter({ user }) {
     return d.toLocaleDateString();
   };
 
+  const handleNoteClick = (n) => {
+    setOpen(false);
+    let url = '/player?project=' + n.project_id;
+    if (n.track_id) url += '&track=' + n.track_id;
+    if (n.timestamp_sec != null) url += '&t=' + n.timestamp_sec;
+    router.push(url);
+  };
+
+  const handleUploadClick = (u) => {
+    if (!u.projectId) return;
+    setOpen(false);
+    router.push('/player?project=' + u.projectId);
+  };
+
   return (
     <div style={{position:'relative'}} ref={panelRef}>
       {/* Bell button */}
@@ -165,7 +181,7 @@ export default function NotificationCenter({ user }) {
               {readNotes.length === 0
                 ? <div style={{padding:32,textAlign:'center',color:'var(--t3)',fontSize:13,fontFamily:'var(--fm)'}}>No read messages</div>
                 : readNotes.map(n => (
-                    <div key={n.id} style={{padding:'12px 14px',borderBottom:'1px solid var(--border)',display:'flex',gap:10,alignItems:'flex-start',opacity:0.7}}>
+                    <div key={n.id} onClick={()=>handleNoteClick(n)} style={{padding:'12px 14px',borderBottom:'1px solid var(--border)',display:'flex',gap:10,alignItems:'flex-start',opacity:0.7,cursor:'pointer'}}>
                       <div style={{width:8,height:8,borderRadius:'50%',background:'var(--t3)',flexShrink:0,marginTop:5}}/>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:12,color:'var(--t3)',lineHeight:1.5,fontFamily:'var(--fm)'}}>{n.body}</div>
@@ -188,7 +204,7 @@ export default function NotificationCenter({ user }) {
               {uploads.length === 0
                 ? <div style={{padding:32,textAlign:'center',color:'var(--t3)',fontSize:13,fontFamily:'var(--fm)'}}>No uploads yet</div>
                 : uploads.slice().reverse().map(u => (
-                    <div key={u.id} style={{padding:'14px',borderBottom:'1px solid var(--border)'}}>
+                    <div key={u.id} onClick={()=>handleUploadClick(u)} style={{padding:'14px',borderBottom:'1px solid var(--border)',cursor:'pointer'}}>
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                         <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.projectName}</div>
                         <div style={{fontFamily:'var(--fm)',fontSize:10,color:u.status==='done'?'#4caf50':'var(--amber)',fontWeight:600}}>
