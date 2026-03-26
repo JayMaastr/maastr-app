@@ -1,30 +1,4 @@
-
-      {showInvite&&(<>
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',zIndex:200}} onClick={()=>setShowInvite(false)}/>
-        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,padding:28,width:340,maxWidth:'90vw',zIndex:201}}>
-          <div style={{fontFamily:'var(--fh)',fontSize:18,marginBottom:16}}>Invite Client</div>
-          <div style={{fontSize:11,color:'var(--t3)',marginBottom:6,letterSpacing:'.05em',textTransform:'uppercase'}}>Client Email</div>
-          <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="client@example.com" style={{width:'100%',background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:8,padding:'10px 12px',color:'var(--text)',fontFamily:'var(--fm)',fontSize:13,outline:'none',marginBottom:12,boxSizing:'border-box'}}/>
-          <div style={{fontSize:11,color:'var(--t3)',marginBottom:6,letterSpacing:'.05em',textTransform:'uppercase'}}>Message (optional)</div>
-          <textarea value={inviteMsg} onChange={e=>setInviteMsg(e.target.value)} placeholder="Here's the master for your review..." rows={3} style={{width:'100%',background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:8,padding:'10px 12px',color:'var(--text)',fontFamily:'var(--fm)',fontSize:13,outline:'none',marginBottom:16,boxSizing:'border-box',resize:'vertical'}}/>
-          {inviteDone&&<div style={{fontSize:12,color:inviteDone.startsWith('Error')?'#e05050':'var(--amber)',marginBottom:12}}>{inviteDone}</div>}
-          <div style={{display:'flex',gap:8}}>
-            <button disabled={inviteSending||!inviteEmail} onClick={async()=>{
-              setInviteSending(true);setInviteDone('');
-              const {data:{user:u}}=await sb.auth.getUser();
-              const res=await fetch('/api/invite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId:project.id,invitedEmail:inviteEmail,invitedBy:u.id,message:inviteMsg})});
-              const d=await res.json();
-              setInviteSending(false);
-              if(d.ok){setInviteDone('Invite sent!');setInviteEmail('');setInviteMsg('');}
-              else setInviteDone('Error: '+(d.error||'Unknown'));
-            }} style={{flex:1,padding:'10px',borderRadius:8,border:'none',background:'var(--amber)',color:'#000',fontFamily:'var(--fm)',fontSize:13,fontWeight:600,cursor:'pointer',opacity:inviteSending||!inviteEmail?.includes('@')?0.5:1}}>
-              {inviteSending?'Sending...':'Send Invite'}
-            </button>
-            <button onClick={()=>{setShowInvite(false);setInviteDone('');}} style={{padding:'10px 16px',borderRadius:8,border:'1px solid var(--border2)',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:13,cursor:'pointer'}}>Cancel</button>
-          </div>
-        </div>
-      </>)}
-    'use client';
+'use client';
 import { useEffect, useState, useRef } from 'react';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
@@ -156,8 +130,18 @@ export default function Player(){
   const [showRevModal,setShowRevModal]=useState(false);const [revFiles,setRevFiles]=useState([]);const [revDragging,setRevDragging]=useState(false);const [revUploading,setRevUploading]=useState(false);const [revStatus,setRevStatus]=useState('');
   const [rerunTrack,setRerunTrack]=useState(null);const [rerunTone,setRerunTone]=useState(null);const [rerunUploading,setRerunUploading]=useState(false);const [rerunStatus,setRerunStatus]=useState('');
   const [deleteTrackConfirm,setDeleteTrackConfirm]=useState(null);
+    const [showMenu,setShowMenu]=useState(false);
+const [showInvite,setShowInvite]=useState(false);
+  const [inviteEmail,setInviteEmail]=useState('');
+  const [inviteMsg,setInviteMsg]=useState('');
+  const [inviteSending,setInviteSending]=useState(false);
+  const [inviteDone,setInviteDone]=useState('');
+  const [downloadEnabled,setDownloadEnabled]=useState(false);
+  const [isOwner,setIsOwner]=useState(false);
   useEffect(()=>{sb.auth.getSession().then(({data:{session}})=>{if(!session){window.location.href='/auth';return;}setUser(session.user);const pid=new URLSearchParams(window.location.search).get('project');if(!pid){window.location.href='/';return;}loadProject(pid);});},[]);
   async function loadProject(pid){const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();if(!proj){window.location.href='/';return;}setProject(proj);
+        setIsOwner(!!(user && proj.user_id === user.id));
+        setDownloadEnabled(!!proj.downloads_enabled);
         setIsOwner(user && proj.user_id === user.id);
         setDownloadEnabled(!!proj.downloads_enabled);const {data:tr}=await sb.from('tracks').select('*,revisions(*)').eq('project_id',pid).order('position');const {data:noteCounts}=await sb.from('notes').select('track_id').eq('project_id',pid);const countMap={};(noteCounts||[]).forEach(n=>{countMap[n.track_id]=(countMap[n.track_id]||0)+1;});const tl=(tr||[]).map(t=>({...t,revisions:[...(t.revisions||[])].sort((a,b)=>(a.version_number||0)-(b.version_number||0)),_noteCount:countMap[t.id]||0}));setTracks(tl);if(tl.length>0){const first=tl[0];setActiveTrackId(first.id);const rev=first.revisions?.find(r=>r.is_active)||first.revisions?.[first.revisions.length-1]||null;setActiveRevision(rev);loadNotes(first.id,rev?.id);}}
   async function loadNotes(trackId,revId){const {data}=await sb.from('notes').select('*').eq('track_id',trackId).order('timestamp_sec');const all=data||[];const filtered=revId?all.filter(n=>n.revision_id===revId||n.revision_id===null):all;setNotes(filtered);setTracks(prev=>prev.map(t=>t.id===trackId?{...t,_noteCount:filtered.length}:t));}
@@ -263,7 +247,22 @@ export default function Player(){
     .btn-amber-sm{font-family:var(--fm);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.btn-amber-sm:disabled{opacity:.35;pointer-events:none;}
     @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar,.td-modal-bar{padding-left:24px;padding-right:24px;}}`}</style>
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><a href="/" className="back">← Dashboard</a></div>
-    <div className="ps-waveform-bar">
+
+      <div style={{position:'relative',marginLeft:'auto',flexShrink:0}}>
+        <div style={{width:32,height:32,borderRadius:'50%',background:'var(--surf3)',border:'1px solid var(--border2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'var(--t2)',cursor:'pointer'}} onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
+        {showMenu&&(<>
+          <div style={{position:'fixed',inset:0,zIndex:99}} onClick={()=>setShowMenu(false)}/>
+          <div style={{position:'absolute',top:'calc(100% + 8px)',right:0,background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:10,minWidth:180,zIndex:100,overflow:'hidden',boxShadow:'0 8px 32px rgba(0,0,0,.4)'}}>
+            <div style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',fontSize:11,color:'var(--t3)'}}>{user?.email}</div>
+            <div style={{padding:6}}>
+              <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/account';}}>Account Settings</button>
+              <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/pricing';}}>Pricing &amp; Plans</button>
+              <div style={{height:1,background:'var(--border)',margin:'4px 0'}}/>
+              <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'#e05050',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);sb.auth.signOut().then(()=>window.location.href='/auth');}}>Sign Out</button>
+            </div>
+          </div>
+        </>)}
+      </div>    <div className="ps-waveform-bar">
       {activeTrack?(<><div className="ps-track-info"><span className="ps-track-name">{activeTrack.title}</span>{activeRevision&&<span className="ps-rev-badge">{activeRevision.label||'v1'}</span>}{(activeRevision?.tone_label||activeTrack.tone_label)&&<span className="ps-tone-badge">{activeRevision?.tone_label||activeTrack.tone_label}</span>}</div><div className="ps-waveform"><Waveform peaks={activeTrack.peaks} progress={progress} notes={notes} duration={duration} onSeek={handleSeek}/><div className="ps-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div></>):(<div className="ps-no-track-top">Tap a track to start listening</div>)}
     </div>
     <div className="page">
@@ -297,4 +296,21 @@ export default function Player(){
     {deleteTrackConfirm&&(<div className="overlay-bg" onClick={()=>setDeleteTrackConfirm(null)}><div className="confirm-box" onClick={e=>e.stopPropagation()}><div className="confirm-box-title">Delete “{deleteTrackConfirm.title}”?</div><div className="confirm-box-sub">Permanently deletes all revisions and notes. Cannot be undone.</div><div className="confirm-box-actions"><button className="btn-confirm-cancel" onClick={()=>setDeleteTrackConfirm(null)}>Keep it</button><button className="btn-confirm-delete" onClick={()=>deleteTrack(deleteTrackConfirm)}>Delete Forever</button></div></div></div>)}
     {rerunTrack&&(<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!rerunUploading&&setRerunTrack(null)}><div className="modal-scroll-inner"><div className="rev-modal"><div className="rev-modal-title">Remaster</div><div className="rerun-target">Track: <strong>{rerunTrack.title}</strong></div><p style={{fontSize:12,color:'var(--t2)',marginBottom:12,lineHeight:1.5}}>Choose a new tone setting. Same source audio, new mastering.</p><ToneGrid value={rerunTone} usedTones={rerunUsedTones} onChange={setRerunTone}/><div className="rev-modal-footer"><span className="rev-modal-status">{rerunStatus}</span><button className="btn-ghost-sm" disabled={rerunUploading} onClick={()=>setRerunTrack(null)}>Cancel</button><button className="btn-amber-sm" disabled={rerunTone===null||rerunUploading} onClick={submitRerun}>{rerunUploading?'Processing…':'Remaster'}</button></div></div></div></div>)}
     {showRevModal&&(<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!revUploading&&setShowRevModal(false)}><div className="modal-scroll-inner"><div className="rev-modal"><div className="rev-modal-title">Upload Revisions</div><div className="rev-modal-sub">Drop files. Matched by name — new names become new tracks.</div><div className={'rev-dropzone'+(revDragging?' over':'')} onDragOver={e=>{e.preventDefault();setRevDragging(true);}} onDragLeave={e=>{e.preventDefault();setRevDragging(false);}} onDrop={e=>{e.preventDefault();e.stopPropagation();setRevDragging(false);addRevFiles(e.dataTransfer?.files||[]);}} onClick={()=>document.getElementById('rev-multi-input').click()}><div style={{fontSize:24,marginBottom:6}}>🎵</div><strong>{revFiles.length>0?'Drop more files':'Drop WAV / MP3 files here'}</strong><br/><span style={{fontSize:11,opacity:.6}}>Multiple files OK — or tap to browse</span><input id="rev-multi-input" type="file" accept=".wav,.mp3,.aiff,.aif,.flac,.m4a,audio/*" multiple style={{display:'none'}} onChange={e=>{addRevFiles(e.target.files);e.target.value='';  }}/></div>{revFiles.length>0&&(<div className="rev-file-list">{revFiles.map((entry,i)=>(<div key={i} className={'rev-file-row'+(entry.isNew?' is-new':'')}><div className="rev-file-row-top"><input className="rev-file-name-input" value={entry.name} onChange={e=>{const n=e.target.value;const m=tracks.find(t=>t.title.toLowerCase()===n.toLowerCase());setRevFiles(prev=>prev.map((r,j)=>j===i?{...r,name:n,matchedTrackId:m?.id||null,isNew:!m}:r));}} placeholder="Track name"/><span className={entry.isNew?'rev-file-badge-new':'rev-file-badge-rev'}>{entry.isNew?'new track':'revision'}</span><button className="rev-file-remove" onClick={()=>setRevFiles(prev=>prev.filter((_,j)=>j!==i))}>×</button></div><div className="rev-file-ref">{entry.file.name} — {(entry.file.size/1024/1024).toFixed(1)} MB{entry.peaksComputed?' — waveform ✓':''}</div><div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:11,color:'var(--t2)',flexShrink:0}}>Tone:</span><div style={{flex:1}}><ToneGrid value={entry.tone} usedTones={entry.matchedTrackId?tracks.find(t=>t.id===entry.matchedTrackId)?.revisions?.map(r=>r.tone_setting).filter(t=>t!=null)||[]:[]} onChange={t=>setRevFiles(prev=>prev.map((r,j)=>j===i?{...r,tone:t}:r))} showSetAll={revFiles.length>1} onSetAll={t=>setRevFiles(prev=>prev.map(r=>({...r,tone:t})))}/></div></div></div>))}</div>)}<div className="rev-modal-footer"><span className="rev-modal-status">{revStatus}</span><button className="btn-ghost-sm" disabled={revUploading} onClick={()=>setShowRevModal(false)}>Cancel</button><button className="btn-amber-sm" disabled={revFiles.length===0||revUploading||revFiles.some(e=>!e.name.trim())} onClick={submitRevisions}>{revUploading?revStatus||'Uploading…':'Upload '+revFiles.length+' file'+(revFiles.length!==1?'s':'')}</button></div></div></div></div>)}
+      {showInvite&&(<>
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',zIndex:200}} onClick={()=>setShowInvite(false)}/>
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,padding:28,width:340,maxWidth:'90vw',zIndex:201}}>
+          <div style={{fontFamily:'var(--fh)',fontSize:18,marginBottom:16}}>Invite Client</div>
+          <div style={{fontSize:11,color:'var(--t3)',marginBottom:6,letterSpacing:'.05em',textTransform:'uppercase'}}>Client Email</div>
+          <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="client@example.com" style={{width:'100%',background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:8,padding:'10px 12px',color:'var(--text)',fontFamily:'var(--fm)',fontSize:13,outline:'none',marginBottom:12,boxSizing:'border-box'}}/>
+          <div style={{fontSize:11,color:'var(--t3)',marginBottom:6,letterSpacing:'.05em',textTransform:'uppercase'}}>Message (optional)</div>
+          <textarea value={inviteMsg} onChange={e=>setInviteMsg(e.target.value)} placeholder="Here is the master for your review..." rows={3} style={{width:'100%',background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:8,padding:'10px 12px',color:'var(--text)',fontFamily:'var(--fm)',fontSize:13,outline:'none',marginBottom:16,boxSizing:'border-box',resize:'vertical'}}/>
+          {inviteDone&&<div style={{fontSize:12,color:inviteDone.startsWith('Error')?'#e05050':'var(--amber)',marginBottom:12}}>{inviteDone}</div>}
+          <div style={{display:'flex',gap:8}}>
+            <button disabled={inviteSending||!inviteEmail} onClick={async()=>{setInviteSending(true);setInviteDone('');const {data:{user:u}}=await sb.auth.getUser();const res=await fetch('/api/invite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId:project.id,invitedEmail:inviteEmail,invitedBy:u.id,message:inviteMsg})});const d=await res.json();setInviteSending(false);if(d.ok){setInviteDone('Invite sent!');setInviteEmail('');setInviteMsg('');}else setInviteDone('Error: '+(d.error||'Unknown'));}} style={{flex:1,padding:'10px',borderRadius:8,border:'none',background:'var(--amber)',color:'#000',fontFamily:'var(--fm)',fontSize:13,fontWeight:600,cursor:'pointer',opacity:inviteSending||!inviteEmail?.includes('@')?0.5:1}}>
+              {inviteSending?'Sending...':'Send Invite'}
+            </button>
+            <button onClick={()=>{setShowInvite(false);setInviteDone('');}} style={{padding:'10px 16px',borderRadius:8,border:'1px solid var(--border2)',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:13,cursor:'pointer'}}>Cancel</button>
+          </div>
+        </div>
+      </>)}
   </>);}
