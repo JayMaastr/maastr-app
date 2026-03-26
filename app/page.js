@@ -231,7 +231,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
                   <div onMouseDown={e=>{e.preventDefault();setCropDragging(true);setCropDragStart({x:e.clientX,y:e.clientY,ox:cropX,oy:cropY});}} onTouchStart={e=>{const t=e.touches[0];setCropDragging(true);setCropDragStart({x:t.clientX,y:t.clientY,ox:cropX,oy:cropY});}} style={{position:'absolute',left:cropX,top:cropY,width:cropSize,height:cropSize,border:'2px solid var(--amber)',boxShadow:'0 0 0 1000px rgba(0,0,0,.4)',cursor:'move',boxSizing:'border-box',touchAction:'none'}}/>
                 </div>
                 <div style={{display:'flex',gap:8,marginTop:10,alignItems:'center'}}>
-                  <input type="range" min={60} max={260} value={cropSize} onChange={e=>{const s=parseInt(e.target.value);const displayW=260;const displayH=Math.round(cropImg.naturalHeight*displayW/cropImg.naturalWidth);setCropSize(s);setCropX(x=>Math.min(x,displayW-s));setCropY(y=>Math.min(y,displayH-s));}} style={{flex:1,accentColor:'var(--amber)'}}/>
+                  <input type="range" min={60} max={260} value={cropSize} onChange={e=>{const s=parseInt(e.target.value);const displayW=260;const displayH=Math.round(cropImg.naturalHeight*displayW/cropImg.naturalWidth);setCropSize(s);setCropX(Math.min(cropX,displayW-s));setCropY(Math.min(cropY,displayH-s));}} style={{flex:1,accentColor:'var(--amber)'}}/>
                   <button disabled={cropUploading} onClick={async()=>{
                     setCropUploading(true);
                     const canvas=document.createElement('canvas');canvas.width=800;canvas.height=800;
