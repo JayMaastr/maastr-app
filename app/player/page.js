@@ -1,4 +1,30 @@
-'use client';
+
+      {showInvite&&(<>
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',zIndex:200}} onClick={()=>setShowInvite(false)}/>
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,padding:28,width:340,maxWidth:'90vw',zIndex:201}}>
+          <div style={{fontFamily:'var(--fh)',fontSize:18,marginBottom:16}}>Invite Client</div>
+          <div style={{fontSize:11,color:'var(--t3)',marginBottom:6,letterSpacing:'.05em',textTransform:'uppercase'}}>Client Email</div>
+          <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="client@example.com" style={{width:'100%',background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:8,padding:'10px 12px',color:'var(--text)',fontFamily:'var(--fm)',fontSize:13,outline:'none',marginBottom:12,boxSizing:'border-box'}}/>
+          <div style={{fontSize:11,color:'var(--t3)',marginBottom:6,letterSpacing:'.05em',textTransform:'uppercase'}}>Message (optional)</div>
+          <textarea value={inviteMsg} onChange={e=>setInviteMsg(e.target.value)} placeholder="Here's the master for your review..." rows={3} style={{width:'100%',background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:8,padding:'10px 12px',color:'var(--text)',fontFamily:'var(--fm)',fontSize:13,outline:'none',marginBottom:16,boxSizing:'border-box',resize:'vertical'}}/>
+          {inviteDone&&<div style={{fontSize:12,color:inviteDone.startsWith('Error')?'#e05050':'var(--amber)',marginBottom:12}}>{inviteDone}</div>}
+          <div style={{display:'flex',gap:8}}>
+            <button disabled={inviteSending||!inviteEmail} onClick={async()=>{
+              setInviteSending(true);setInviteDone('');
+              const {data:{user:u}}=await sb.auth.getUser();
+              const res=await fetch('/api/invite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId:project.id,invitedEmail:inviteEmail,invitedBy:u.id,message:inviteMsg})});
+              const d=await res.json();
+              setInviteSending(false);
+              if(d.ok){setInviteDone('Invite sent!');setInviteEmail('');setInviteMsg('');}
+              else setInviteDone('Error: '+(d.error||'Unknown'));
+            }} style={{flex:1,padding:'10px',borderRadius:8,border:'none',background:'var(--amber)',color:'#000',fontFamily:'var(--fm)',fontSize:13,fontWeight:600,cursor:'pointer',opacity:inviteSending||!inviteEmail?.includes('@')?0.5:1}}>
+              {inviteSending?'Sending...':'Send Invite'}
+            </button>
+            <button onClick={()=>{setShowInvite(false);setInviteDone('');}} style={{padding:'10px 16px',borderRadius:8,border:'1px solid var(--border2)',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:13,cursor:'pointer'}}>Cancel</button>
+          </div>
+        </div>
+      </>)}
+    'use client';
 import { useEffect, useState, useRef } from 'react';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
@@ -131,7 +157,9 @@ export default function Player(){
   const [rerunTrack,setRerunTrack]=useState(null);const [rerunTone,setRerunTone]=useState(null);const [rerunUploading,setRerunUploading]=useState(false);const [rerunStatus,setRerunStatus]=useState('');
   const [deleteTrackConfirm,setDeleteTrackConfirm]=useState(null);
   useEffect(()=>{sb.auth.getSession().then(({data:{session}})=>{if(!session){window.location.href='/auth';return;}setUser(session.user);const pid=new URLSearchParams(window.location.search).get('project');if(!pid){window.location.href='/';return;}loadProject(pid);});},[]);
-  async function loadProject(pid){const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();if(!proj){window.location.href='/';return;}setProject(proj);const {data:tr}=await sb.from('tracks').select('*,revisions(*)').eq('project_id',pid).order('position');const {data:noteCounts}=await sb.from('notes').select('track_id').eq('project_id',pid);const countMap={};(noteCounts||[]).forEach(n=>{countMap[n.track_id]=(countMap[n.track_id]||0)+1;});const tl=(tr||[]).map(t=>({...t,revisions:[...(t.revisions||[])].sort((a,b)=>(a.version_number||0)-(b.version_number||0)),_noteCount:countMap[t.id]||0}));setTracks(tl);if(tl.length>0){const first=tl[0];setActiveTrackId(first.id);const rev=first.revisions?.find(r=>r.is_active)||first.revisions?.[first.revisions.length-1]||null;setActiveRevision(rev);loadNotes(first.id,rev?.id);}}
+  async function loadProject(pid){const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();if(!proj){window.location.href='/';return;}setProject(proj);
+        setIsOwner(user && proj.user_id === user.id);
+        setDownloadEnabled(!!proj.downloads_enabled);const {data:tr}=await sb.from('tracks').select('*,revisions(*)').eq('project_id',pid).order('position');const {data:noteCounts}=await sb.from('notes').select('track_id').eq('project_id',pid);const countMap={};(noteCounts||[]).forEach(n=>{countMap[n.track_id]=(countMap[n.track_id]||0)+1;});const tl=(tr||[]).map(t=>({...t,revisions:[...(t.revisions||[])].sort((a,b)=>(a.version_number||0)-(b.version_number||0)),_noteCount:countMap[t.id]||0}));setTracks(tl);if(tl.length>0){const first=tl[0];setActiveTrackId(first.id);const rev=first.revisions?.find(r=>r.is_active)||first.revisions?.[first.revisions.length-1]||null;setActiveRevision(rev);loadNotes(first.id,rev?.id);}}
   async function loadNotes(trackId,revId){const {data}=await sb.from('notes').select('*').eq('track_id',trackId).order('timestamp_sec');const all=data||[];const filtered=revId?all.filter(n=>n.revision_id===revId||n.revision_id===null):all;setNotes(filtered);setTracks(prev=>prev.map(t=>t.id===trackId?{...t,_noteCount:filtered.length}:t));}
   const activeTrack=tracks.find(t=>t.id===activeTrackId)||null;
   const activeIdx=tracks.findIndex(t=>t.id===activeTrackId);
@@ -239,7 +267,19 @@ export default function Player(){
       {activeTrack?(<><div className="ps-track-info"><span className="ps-track-name">{activeTrack.title}</span>{activeRevision&&<span className="ps-rev-badge">{activeRevision.label||'v1'}</span>}{(activeRevision?.tone_label||activeTrack.tone_label)&&<span className="ps-tone-badge">{activeRevision?.tone_label||activeTrack.tone_label}</span>}</div><div className="ps-waveform"><Waveform peaks={activeTrack.peaks} progress={progress} notes={notes} duration={duration} onSeek={handleSeek}/><div className="ps-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div></>):(<div className="ps-no-track-top">Tap a track to start listening</div>)}
     </div>
     <div className="page">
-      <div className="page-header"><div className="proj-title">{project?.title}</div><div className="proj-artist">{project?.artist}</div><div className="top-actions"><button className="btn-upload-rev" onClick={()=>{setRevFiles([]);setRevStatus('');setShowRevModal(true);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Upload Revisions</button></div></div>
+      <div className="page-header"><div className="proj-title">{project?.title}</div><div className="proj-artist">{project?.artist}</div><div className="top-actions"><button className="btn-upload-rev" onClick={()=>{setRevFiles([]);setRevStatus('');setShowRevModal(true);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Upload Revisions</button>
+          {isOwner&&<button className="btn-upload-rev" style={{background:'var(--surf3)',color:'var(--t2)',border:'1px solid var(--border2)'}} onClick={()=>setShowInvite(true)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+            Invite Client
+          </button>}
+          {isOwner&&<button className="btn-upload-rev" style={{background:'var(--surf3)',color:downloadEnabled?'var(--amber)':'var(--t2)',border:'1px solid var(--border2)'}} onClick={async()=>{const nd=!downloadEnabled;setDownloadEnabled(nd);await sb.from('projects').update({downloads_enabled:nd}).eq('id',project.id);}}>
+            {downloadEnabled?'Downloads On':'Downloads Off'}
+          </button>}</div></div>
+      {!isOwner&&activeTrack&&<div style={{padding:'8px 16px 0'}}>
+        <button onClick={async()=>{const {data:{user:u}}=await sb.auth.getUser();const p=await sb.from('profiles').select('full_name,email').eq('id',u?.id).single();await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:activeTrack.id,projectId:project.id,clientName:p.data?.full_name,clientEmail:p.data?.email||u?.email})});alert('Engineer notified!');}} style={{padding:'10px 18px',borderRadius:8,border:'none',background:'var(--amber)',color:'#000',fontFamily:'var(--fm)',fontSize:12,fontWeight:600,cursor:'pointer',width:'100%'}}>
+          Ready for Review
+        </button>
+      </div>}
       <div className="tracks-lbl">{tracks.length} {tracks.length===1?'track':'tracks'}</div>
       <div style={{borderRadius:12,overflow:'hidden',border:'1px solid var(--border)'}}>
         {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
