@@ -207,10 +207,14 @@ function ProjectCard({project,idx,onDelete,onSave}){
   return(
     <div className="card" style={{animationDelay:idx*60+'ms'}}
       onClick={e=>{if(menuOpen){setMenuOpen(false);e.stopPropagation();return;}window.location.href='/player?project='+project.id;}}>
-      <div className="card-header">
+      <div className="card-header" style={{gap:12,alignItems:'center'}}>
+        <div style={{width:48,height:48,borderRadius:8,background:'var(--surf3)',border:'1px solid var(--border)',flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,color:'var(--t3)'}}>
+          {project.image_url?<img src={project.image_url} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:(project.title?.[0]?.toUpperCase()||'?')}
+        </div>
         <div className="card-titles">
           <div className="card-title">{project.title}</div>
           <div className="card-artist">{project.artist}</div>
+        </div>
         </div>
         <div ref={menuRef} style={{position:'relative',flexShrink:0}} onClick={e=>e.stopPropagation()}>
           <button className="menu-btn" onClick={()=>setMenuOpen(o=>!o)}>
@@ -243,6 +247,8 @@ export default function Dashboard(){
   const [showReport,setShowReport]=useState(false);
   const [reportMsg,setReportMsg]=useState('');
   const [reportSent,setReportSent]=useState(false);
+  const [searchTerm,setSearchTerm]=useState('');
+  const [coverArtUrl,setCoverArtUrl]=useState('');
   const [projects,setProjects]=useState([]);
   const [loading,setLoading]=useState(true);
   const [showModal,setShowModal]=useState(false);
@@ -329,7 +335,7 @@ export default function Dashboard(){
     if(!projName||tracks.length===0||tracks.some(t=>!t.name.trim()))return;
     setCreating(true);
     try{
-      const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist||'Unknown Artist',peaks:[]}).select().single();
+      const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null||'Unknown Artist',peaks:[]}).select().single();
       if(projErr)throw projErr;
       for(let i=0;i<tracks.length;i++){
         const t=tracks[i];
@@ -363,7 +369,7 @@ export default function Dashboard(){
     }catch(e){setStatusMsg('Error: '+e.message);setCreating(false);}
   }
 
-  function closeModal(){setShowModal(false);setProjName('');setProjArtist('');setTracks([]);setStatusMsg('');setDragging(false);setCreating(false);}
+  function closeModal(){setShowModal(false);setProjName('');setProjArtist('');setCoverArtUrl('');setTracks([]);setStatusMsg('');setDragging(false);setCreating(false);}
   function handleDrop(e){e.preventDefault();e.stopPropagation();setDragging(false);addFilesWithPeaks(e.dataTransfer?.files||[]);}
   function handleDragOver(e){e.preventDefault();e.stopPropagation();setDragging(true);}
   function handleDragLeave(e){e.preventDefault();setDragging(false);}
@@ -420,7 +426,7 @@ export default function Dashboard(){
         <div className="grid">
           {loading?<div className="empty"><div className="empty-title">Loading…</div></div>
           :projects.length===0?(<div className="empty"><div className="empty-title">No projects yet.</div><p style={{fontSize:12,marginBottom:20}}>Create your first mastering project.</p><button className="create-btn" onClick={()=>setShowModal(true)}>New Project</button></div>)
-          :projects.map((p,idx)=>(<ProjectCard key={p.id} project={p} idx={idx} onDelete={deleteProject} onSave={handleSave}/>))}
+          :projects.filter(p=>{if(!searchTerm.trim())return true;const q=searchTerm.trim().toLowerCase();return(p.title||'').toLowerCase().includes(q)||(p.artist||'').toLowerCase().includes(q);}).map((p,idx)=>(<ProjectCard key={p.id} project={p} idx={idx} onDelete={deleteProject} onSave={handleSave}/>))}
         </div>
       </div>
 
