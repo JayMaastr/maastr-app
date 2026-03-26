@@ -1,4 +1,5 @@
 'use client';
+import NotificationCenter from '@/app/components/NotificationCenter';
 import { useEffect, useState, useRef } from 'react';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
@@ -150,7 +151,7 @@ function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, o
 function sanitizeFilename(name){return name.replace(/[^a-zA-Z0-9._-]/g,'_');}
 function urlToKey(url){try{return decodeURIComponent(new URL(url).pathname.replace(/^\//,''));}catch{return null;}}
 
-function ProjectCard({project,idx,onDelete,onSave}){
+function ProjectCard({project,idx,onDelete,onSave,unreadCount}){
   const [menuOpen,setMenuOpen]=useState(false);
   const [editing,setEditing]=useState(false);
   const [editTitle,setEditTitle]=useState(project.title||'');
@@ -335,7 +336,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
         </div>
       </div>
       <div className="card-wave"><WaveformCanvas peaks={project.peaks}/></div>
-      <div className="card-meta"><span>{tc} track{tc!==1?'s':''}</span><span>{dateStr}</span></div>
+      <div className="card-meta" style={{position:'relative'}}>{unreadCount>0&&<span style={{position:'absolute',top:-8,right:0,background:'var(--amber)',color:'#000',borderRadius:99,fontSize:9,fontWeight:700,fontFamily:'var(--fm)',minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{unreadCount}</span>}<span>{tc} track{tc!==1?'s':''}</span><span>{dateStr}</span></div>
     </div>
   );
   if(confirmDelete)return(
@@ -399,6 +400,7 @@ export default function Dashboard(){
   const [searchTerm,setSearchTerm]=useState('');
   const [coverArtUrl,setCoverArtUrl]=useState('');
   const [projects,setProjects]=useState([]);
+  const [projectNotes,setProjectNotes]=useState({});
   const [loading,setLoading]=useState(true);
   const [showModal,setShowModal]=useState(false);
   const [projName,setProjName]=useState('');
@@ -412,10 +414,15 @@ export default function Dashboard(){
   useEffect(()=>{
     sb.auth.getSession().then(({data:{session}})=>{
       if(!session){window.location.href='/auth';return;}
-      setUser(session.user);loadProjects();
+      setUser(session.user);loadProjects();loadProjectNotes();
     });
   },[]);
 
+  async function loadProjectNotes(){
+    if(!user)return;
+    const {data}=await sb.from('notes').select('project_id').eq('resolved',false);
+    if(data){const counts={};data.forEach(n=>{counts[n.project_id]=(counts[n.project_id]||0)+1;});setProjectNotes(counts);}
+  }
   async function loadProjects(){
     setLoading(true);
     const {data,error}=await sb.from('projects').select('*,tracks(id,updated_at,audio_url,mp3_url)').order('updated_at',{ascending:false});
@@ -486,13 +493,16 @@ export default function Dashboard(){
     try{
       const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null,peaks:[]}).select().single();
       if(projErr)throw projErr;
+      const _ncId='up_'+Date.now();
+      setShowCreate(false);if(window.nc_startUpload)window.nc_startUpload(_ncId,projName,proj.id,projName,tracks.length);
+      if(window.nc_openToUploads)setTimeout(()=>window.nc_openToUploads&&window.nc_openToUploads(),100);
       for(let i=0;i<tracks.length;i++){
         const t=tracks[i];
         setStatusMsg('Uploading '+(i+1)+'/'+tracks.length+': '+t.name);
         const safeName=sanitizeFilename(t.file.name);
         const r=await fetch(UPLOAD_WORKER_URL,{method:'POST',headers:{'X-File-Name':safeName,'X-Project-Id':proj.id,'Content-Type':t.file.type||'audio/wav'},body:t.file});
         const result=await r.json();
-        if(result.url){
+        if(window.nc_updateUpload)window.nc_updateUpload(_ncId,i+1,tracks.length);if(result.url){if(window.__ncDone)window.__ncDone();
           const tone=TONES[t.tone];
           const peaks=t.peaks&&t.peaks.length>0?t.peaks:[];
           // Compute peaks if not already done
@@ -518,7 +528,7 @@ export default function Dashboard(){
     }catch(e){setStatusMsg('Error: '+e.message);setCreating(false);}
   }
 
-  function closeModal(){setShowModal(false);setProjName('');setProjArtist('');setCoverArtUrl('');setTracks([]);setStatusMsg('');setDragging(false);setCreating(false);}
+  function closeModal(){setShowModal(false);setProjName('');setProjArtist('');setCoverArtUrl('');setTracks([]);setStatusMsg('');setDragging(false);setCreating(false);if(window.nc_finishUpload)window.nc_finishUpload(_ncId);}
   function handleDrop(e){e.preventDefault();e.stopPropagation();setDragging(false);addFilesWithPeaks(e.dataTransfer?.files||[]);}
   function handleDragOver(e){e.preventDefault();e.stopPropagation();setDragging(true);}
   function handleDragLeave(e){e.preventDefault();setDragging(false);}
@@ -533,6 +543,7 @@ export default function Dashboard(){
           <div className="logo">maastr<em>.</em></div>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:11,color:'var(--t3)'}}>{user?.email}</span>
+            <NotificationCenter user={user}/>
             <div style={{position:'relative'}}>
             <div className="avatar" onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
             {showMenu&&(<>
