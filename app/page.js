@@ -193,7 +193,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
         <div className="edit-label" style={{marginTop:10}}>Artist / Band</div>
         <input className="edit-input" value={editArtist} onChange={e=>setEditArtist(e.target.value)}
           onKeyDown={e=>{if(e.key==='Enter')saveEdit();if(e.key==='Escape'){setEditArtist(project.artist||'');setEditing(false);}}}/>
-        <div <div style={{marginBottom:12}}>
+        <div style={{marginBottom:12}}>
               <div style={{fontSize:10,color:'var(--t3)',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:8}}>Cover Art</div>
               <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
                 <div style={{width:72,height:72,borderRadius:8,background:'var(--surf2)',border:'1px solid var(--border2)',overflow:'hidden',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'var(--t3)'}}>
@@ -255,7 +255,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
                 </div>
               </div>)}
             </div>
-            className="edit-actions">
+            <div className="edit-actions">
           <button className="edit-cancel" onClick={()=>{setEditTitle(project.title||'');setEditArtist(project.artist||'');setEditing(false);}}>Cancel</button>
           <button className="edit-save" disabled={!editTitle.trim()||saving} onClick={saveEdit}>{saving?'Saving…':'Save'}</button>
         </div>
