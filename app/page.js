@@ -188,8 +188,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
           <button className="edit-save" disabled={!editTitle.trim()||saving} onClick={saveEdit}>{saving?'Saving…':'Save'}</button>
         </div>
       </div>
-      </div>
-        <div className="card-wave"><WaveformCanvas peaks={project.peaks}/></div>
+      <div className="card-wave"><WaveformCanvas peaks={project.peaks}/></div>
       <div className="card-meta"><span>{tc} track{tc!==1?'s':''}</span><span>{dateStr}</span></div>
     </div>
   );
@@ -238,7 +237,8 @@ function ProjectCard({project,idx,onDelete,onSave}){
           )}
         </div>
       </div>
-      <div className="card-wave"><WaveformCanvas peaks={project.peaks}/></div>
+      </div>
+        <div className="card-wave"><WaveformCanvas peaks={project.peaks}/></div>
       <div className="card-meta"><span>{tc} track{tc!==1?'s':''}</span><span>{dateStr}</span></div>
     </div>
   );
