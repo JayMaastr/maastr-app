@@ -462,7 +462,7 @@ export default function Dashboard(){
     if(!projName||tracks.length===0||tracks.some(t=>!t.name.trim()))return;
     setCreating(true);
     try{
-      const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null||'Unknown Artist',peaks:[]}).select().single();
+      const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null,peaks:[]}).select().single();
       if(projErr)throw projErr;
       for(let i=0;i<tracks.length;i++){
         const t=tracks[i];
