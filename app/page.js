@@ -255,6 +255,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
                 </div>
               </div>)}
             </div>
+            </div>
             <div className="edit-actions">
           <button className="edit-cancel" onClick={()=>{setEditTitle(project.title||'');setEditArtist(project.artist||'');setEditing(false);}}>Cancel</button>
           <button className="edit-save" disabled={!editTitle.trim()||saving} onClick={saveEdit}>{saving?'Saving…':'Save'}</button>
