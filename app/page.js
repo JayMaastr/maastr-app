@@ -240,6 +240,9 @@ function ProjectCard({project,idx,onDelete,onSave}){
 export default function Dashboard(){
   const [user,setUser]=useState(null);
   const [showMenu,setShowMenu]=useState(false);
+  const [showReport,setShowReport]=useState(false);
+  const [reportMsg,setReportMsg]=useState('');
+  const [reportSent,setReportSent]=useState(false);
   const [projects,setProjects]=useState([]);
   const [loading,setLoading]=useState(true);
   const [showModal,setShowModal]=useState(false);
@@ -384,6 +387,9 @@ export default function Dashboard(){
                 <div style={{padding:6}}>
                   <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/account';}}>Account Settings</button>
                   <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/pricing';}}>Pricing & Plans</button>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/help';}}>Help & FAQ</button>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/blog';}}>Learning Center</button>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);setShowReport(true);}}>Report a Problem</button>
                   <div style={{height:1,background:'var(--border)',margin:'4px 0'}}/>
                   <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'#e05050',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);sb.auth.signOut().then(()=>window.location.href='/auth');}}>Sign Out</button>
                 </div>
@@ -467,6 +473,28 @@ export default function Dashboard(){
           </div>
         </div>
       )}
+    
+      {showReport&&(<>
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',zIndex:200}} onClick={()=>{setShowReport(false);setReportSent(false);setReportMsg('');}}/>
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,padding:28,width:360,maxWidth:'90vw',zIndex:201}}>
+          <div style={{fontFamily:'var(--fh)',fontSize:18,marginBottom:8}}>Report a Problem</div>
+          <div style={{fontSize:12,color:'var(--t2)',marginBottom:16,lineHeight:1.6}}>Found a bug or something not working? Let us know.</div>
+          {reportSent
+            ? <div style={{textAlign:'center',padding:'20px 0'}}>
+                <div style={{fontSize:24,marginBottom:8}}>✓</div>
+                <div style={{fontSize:13,color:'var(--amber)'}}>Thanks — we got it.</div>
+                <button onClick={()=>{setShowReport(false);setReportSent(false);setReportMsg('');}} style={{marginTop:16,padding:'8px 20px',borderRadius:8,border:'1px solid var(--border2)',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}}>Close</button>
+              </div>
+            : <>
+                <textarea value={reportMsg} onChange={e=>setReportMsg(e.target.value)} placeholder="Describe what happened..." rows={4} style={{width:'100%',background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:8,padding:'10px 12px',color:'var(--text)',fontFamily:'var(--fm)',fontSize:13,outline:'none',marginBottom:16,boxSizing:'border-box',resize:'vertical'}}/>
+                <div style={{display:'flex',gap:8}}>
+                  <button disabled={!reportMsg.trim()} onClick={async()=>{await fetch('https://api.resend.com/emails',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer re_iNpbuq91_7d7zFDeP4tpHVsAQUCxTVnqf'},body:JSON.stringify({from:'maastr <onboarding@resend.dev>',to:['jay@jaymaas.com'],subject:'maastr bug report from '+user?.email,html:'<p>'+reportMsg.replace(/\n/g,'<br>')+'</p><p style="color:#888">From: '+user?.email+'</p>'})});setReportSent(true);}} style={{flex:1,padding:'10px',borderRadius:8,border:'none',background:'var(--amber)',color:'#000',fontFamily:'var(--fm)',fontSize:13,fontWeight:600,cursor:'pointer',opacity:reportMsg.trim()?1:0.4}}>Send Report</button>
+                  <button onClick={()=>{setShowReport(false);setReportMsg('');}} style={{padding:'10px 16px',borderRadius:8,border:'1px solid var(--border2)',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:13,cursor:'pointer'}}>Cancel</button>
+                </div>
+              </>
+          }
+        </div>
+      </>)}
     </>
   );
             }
