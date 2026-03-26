@@ -155,6 +155,16 @@ function ProjectCard({project,idx,onDelete,onSave}){
   const [editing,setEditing]=useState(false);
   const [editTitle,setEditTitle]=useState(project.title||'');
   const [editArtist,setEditArtist]=useState(project.artist||'');
+  const [editImageUrl,setEditImageUrl]=useState(project.image_url||'');
+  const [cropSrc,setCropSrc]=useState('');
+  const [cropImg,setCropImg]=useState(null);
+  const [cropX,setCropX]=useState(0);
+  const [cropY,setCropY]=useState(0);
+  const [cropSize,setCropSize]=useState(200);
+  const [cropDragging,setCropDragging]=useState(false);
+  const [cropDragStart,setCropDragStart]=useState({x:0,y:0,ox:0,oy:0});
+  const [cropUploading,setCropUploading]=useState(false);
+  const cropCanvasRef=useRef(null);
   const [saving,setSaving]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const menuRef=useRef(null);
@@ -171,7 +181,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
   async function saveEdit(){
     if(!editTitle.trim())return;
     setSaving(true);
-    await sb.from('projects').update({title:editTitle.trim(),artist:editArtist.trim()}).eq('id',project.id);
+    await sb.from('projects').update({title:editTitle.trim(),artist:editArtist.trim(),image_url:editImageUrl||null}).eq('id',project.id);
     setSaving(false);setEditing(false);onSave(project.id,editTitle.trim(),editArtist.trim());
   }
   if(editing)return(
@@ -183,7 +193,69 @@ function ProjectCard({project,idx,onDelete,onSave}){
         <div className="edit-label" style={{marginTop:10}}>Artist / Band</div>
         <input className="edit-input" value={editArtist} onChange={e=>setEditArtist(e.target.value)}
           onKeyDown={e=>{if(e.key==='Enter')saveEdit();if(e.key==='Escape'){setEditArtist(project.artist||'');setEditing(false);}}}/>
-        <div className="edit-actions">
+        <div <div style={{marginBottom:12}}>
+              <div style={{fontSize:10,color:'var(--t3)',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:8}}>Cover Art</div>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+                <div style={{width:72,height:72,borderRadius:8,background:'var(--surf2)',border:'1px solid var(--border2)',overflow:'hidden',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'var(--t3)'}}>
+                  {editImageUrl?<img src={editImageUrl} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:(project.title?.[0]?.toUpperCase()||'?')}
+                </div>
+                <div style={{flex:1}}>
+                  <label style={{display:'inline-block',padding:'7px 12px',borderRadius:7,border:'1px solid var(--border2)',background:'var(--surf2)',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:11,cursor:'pointer',marginBottom:4}}>
+                    {cropUploading?'Uploading...':'Choose Image'}
+                    <input type="file" accept="image/jpeg,image/png,image/webp" style={{display:'none'}} onChange={e=>{
+                      const file=e.target.files?.[0];if(!file)return;
+                      const reader=new FileReader();
+                      reader.onload=ev=>{
+                        const img=new Image();
+                        img.onload=()=>{
+                          setCropImg(img);
+                          setCropSrc(ev.target.result);
+                          const displayW=260;const displayH=Math.round(img.naturalHeight*displayW/img.naturalWidth);
+                          const sz=Math.min(displayW,displayH);
+                          setCropSize(sz);setCropX(Math.round((displayW-sz)/2));setCropY(Math.round((displayH-sz)/2));
+                        };
+                        img.src=ev.target.result;
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value='';
+                    }}/>
+                  </label>
+                  <div style={{fontSize:10,color:'var(--t3)',lineHeight:1.5}}>JPG, PNG or WebP. Square crops best.</div>
+                  {editImageUrl&&<button onClick={()=>setEditImageUrl('')} style={{display:'block',fontSize:10,color:'#e05050',background:'transparent',border:'none',cursor:'pointer',padding:'2px 0',fontFamily:'var(--fm)',marginTop:2}}>Remove art</button>}
+                </div>
+              </div>
+              {cropSrc&&cropImg&&(<div style={{marginTop:12,background:'var(--surf2)',borderRadius:10,padding:12,border:'1px solid var(--border2)'}}>
+                <div style={{fontSize:11,color:'var(--t2)',marginBottom:8}}>Drag the square to pick your crop area, then tap Crop & Save.</div>
+                <div style={{position:'relative',display:'inline-block',userSelect:'none'}} onMouseMove={e=>{if(!cropDragging)return;const rect=e.currentTarget.getBoundingClientRect();const dx=e.clientX-cropDragStart.x;const dy=e.clientY-cropDragStart.y;const displayW=260;const displayH=Math.round(cropImg.naturalHeight*displayW/cropImg.naturalWidth);const newX=Math.max(0,Math.min(displayW-cropSize,cropDragStart.ox+dx));const newY=Math.max(0,Math.min(displayH-cropSize,cropDragStart.oy+dy));setCropX(Math.round(newX));setCropY(Math.round(newY));}} onMouseUp={()=>setCropDragging(false)} onMouseLeave={()=>setCropDragging(false)} onTouchMove={e=>{if(!cropDragging)return;e.preventDefault();const t=e.touches[0];const rect=e.currentTarget.getBoundingClientRect();const dx=t.clientX-cropDragStart.x;const dy=t.clientY-cropDragStart.y;const displayW=260;const displayH=Math.round(cropImg.naturalHeight*displayW/cropImg.naturalWidth);const newX=Math.max(0,Math.min(displayW-cropSize,cropDragStart.ox+dx));const newY=Math.max(0,Math.min(displayH-cropSize,cropDragStart.oy+dy));setCropX(Math.round(newX));setCropY(Math.round(newY));}} onTouchEnd={()=>setCropDragging(false)}>
+                  <img src={cropSrc} style={{display:'block',width:260,height:'auto',borderRadius:6,opacity:0.5,pointerEvents:'none'}}/>
+                  <div onMouseDown={e=>{e.preventDefault();setCropDragging(true);setCropDragStart({x:e.clientX,y:e.clientY,ox:cropX,oy:cropY});}} onTouchStart={e=>{const t=e.touches[0];setCropDragging(true);setCropDragStart({x:t.clientX,y:t.clientY,ox:cropX,oy:cropY});}} style={{position:'absolute',left:cropX,top:cropY,width:cropSize,height:cropSize,border:'2px solid var(--amber)',boxShadow:'0 0 0 1000px rgba(0,0,0,.4)',cursor:'move',boxSizing:'border-box',touchAction:'none'}}/>
+                </div>
+                <div style={{display:'flex',gap:8,marginTop:10,alignItems:'center'}}>
+                  <input type="range" min={60} max={260} value={cropSize} onChange={e=>{const s=parseInt(e.target.value);const displayW=260;const displayH=Math.round(cropImg.naturalHeight*displayW/cropImg.naturalWidth);setCropSize(s);setCropX(x=>Math.min(x,displayW-s));setCropY(y=>Math.min(y,displayH-s));}} style={{flex:1,accentColor:'var(--amber)'}}/>
+                  <button disabled={cropUploading} onClick={async()=>{
+                    setCropUploading(true);
+                    const canvas=document.createElement('canvas');canvas.width=800;canvas.height=800;
+                    const ctx=canvas.getContext('2d');
+                    const displayW=260;
+                    const scaleX=cropImg.naturalWidth/displayW;
+                    const scaleY=cropImg.naturalHeight/(cropImg.naturalHeight*displayW/cropImg.naturalWidth);
+                    ctx.drawImage(cropImg,cropX*scaleX,cropY*scaleY,cropSize*scaleX,cropSize*scaleY,0,0,800,800);
+                    canvas.toBlob(async blob=>{
+                      try{
+                        const r=await fetch(UPLOAD_WORKER_URL+'?project=covers&name='+Date.now()+'.jpg',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}});
+                        const d=await r.json();
+                        if(d.url){setEditImageUrl(d.url);setCropSrc('');setCropImg(null);}
+                      }catch(err){alert('Upload failed: '+err.message);}
+                      setCropUploading(false);
+                    },'image/jpeg',0.9);
+                  }} style={{padding:'7px 14px',borderRadius:7,border:'none',background:'var(--amber)',color:'#000',fontFamily:'var(--fm)',fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>
+                    {cropUploading?'Uploading...':'Crop & Save'}
+                  </button>
+                  <button onClick={()=>{setCropSrc('');setCropImg(null);}} style={{padding:'7px 10px',borderRadius:7,border:'1px solid var(--border2)',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:11,cursor:'pointer'}}>Cancel</button>
+                </div>
+              </div>)}
+            </div>
+            className="edit-actions">
           <button className="edit-cancel" onClick={()=>{setEditTitle(project.title||'');setEditArtist(project.artist||'');setEditing(false);}}>Cancel</button>
           <button className="edit-save" disabled={!editTitle.trim()||saving} onClick={saveEdit}>{saving?'Saving…':'Save'}</button>
         </div>
