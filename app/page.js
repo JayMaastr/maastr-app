@@ -215,7 +215,6 @@ function ProjectCard({project,idx,onDelete,onSave}){
           <div className="card-title">{project.title}</div>
           <div className="card-artist">{project.artist}</div>
         </div>
-        </div>
         <div ref={menuRef} style={{position:'relative',flexShrink:0}} onClick={e=>e.stopPropagation()}>
           <button className="menu-btn" onClick={()=>setMenuOpen(o=>!o)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
