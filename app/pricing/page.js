@@ -33,6 +33,11 @@ const TIERS = [
 ];
 
 const TIER_LABELS = {free:'Free',home_studio_wiz:'Home Studio Wiz',studio_expert:'Studio Expert',industry_pro:'Industry Pro'};
+const PRICE_IDS = {
+  home_studio_wiz: 'price_1TF15jCL6xuVEtSJ4O1j3rSw',
+  studio_expert:   'price_1TF165CL6xuVEtSJoGwsS8ER',
+  industry_pro:    'price_1TF16UCL6xuVEtSJ0vVrXKIV',
+};
 
 export default function PricingPage() {
   const [user, setUser] = useState(null);
@@ -48,9 +53,28 @@ export default function PricingPage() {
     });
   }, []);
 
-  const handleSelect = (tierId) => {
+  const [checkingOut, setCheckingOut] = useState(null);
+
+  const handleSelect = async (tierId) => {
     if (!user) { window.location.href = '/auth?next=/pricing'; return; }
-    alert('Stripe checkout coming soon — selected: ' + tierId);
+    setCheckingOut(tierId);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          priceId: PRICE_IDS[tierId],
+          userId: user.id,
+          userEmail: user.email,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) { window.location.href = data.url; }
+      else { alert('Checkout error: ' + (data.error || 'Unknown error')); }
+    } catch (err) {
+      alert('Checkout failed: ' + err.message);
+    }
+    setCheckingOut(null);
   };
 
   return (
@@ -113,8 +137,8 @@ export default function PricingPage() {
                 <div className="pcprice">${t.price}<span>/year</span></div>
                 <div className="pcdesc">{t.desc}</div>
                 <ul className="pcfeats">{t.features.map((f,i)=><li key={i}>{f}</li>)}</ul>
-                <button className="pcbtn" onClick={()=>handleSelect(t.id)} disabled={isCurrent}>
-                  {isCurrent?'Current Plan':t.cta}
+                <button className="pcbtn" onClick={()=>handleSelect(t.id)} disabled={isCurrent||checkingOut===t.id}>
+                  {checkingOut===t.id?'Redirecting...':isCurrent?'Current Plan':t.cta}
                 </button>
                 {isCurrent&&<div className="pccur">✓ Your current plan</div>}
               </div>
