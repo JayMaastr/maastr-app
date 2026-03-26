@@ -255,7 +255,8 @@ function ProjectCard({project,idx,onDelete,onSave}){
     if(!editTitle.trim())return;
     setSaving(true);
     await sb.from('projects').update({title:editTitle.trim(),artist:editArtist.trim(),image_url:editImageUrl||null}).eq('id',project.id);
-    setSaving(false);setEditing(false);onSave(project.id,editTitle.trim(),editArtist.trim());
+    setSaving(false);setEditing(false);
+    setProjects(prev=>prev.map(p=>p.id===project.id?{...p,title:editTitle.trim(),artist:editArtist.trim(),image_url:editImageUrl||null}:p));onSave(project.id,editTitle.trim(),editArtist.trim());
   }
   if(editing)return(
     <div className="card editing" style={{animationDelay:idx*60+'ms'}}>
