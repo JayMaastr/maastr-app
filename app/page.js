@@ -255,8 +255,7 @@ function ProjectCard({project,idx,onDelete,onSave}){
     if(!editTitle.trim())return;
     setSaving(true);
     await sb.from('projects').update({title:editTitle.trim(),artist:editArtist.trim(),image_url:editImageUrl||null}).eq('id',project.id);
-    setSaving(false);setEditing(false);
-    setProjects(prev=>prev.map(p=>p.id===project.id?{...p,title:editTitle.trim(),artist:editArtist.trim(),image_url:editImageUrl||null}:p));onSave(project.id,editTitle.trim(),editArtist.trim());
+    setSaving(false);setEditing(false);onSave(project.id,editTitle.trim(),editArtist.trim(),editImageUrl||null);
   }
   if(editing)return(
     <div className="card editing" style={{animationDelay:idx*60+'ms'}}>
@@ -402,7 +401,7 @@ export default function Dashboard(){
     setLoading(false);
   }
 
-  function handleSave(id,title,artist){setProjects(prev=>prev.map(p=>p.id===id?{...p,title,artist}:p));}
+  function handleSave(id,title,artist,imageUrl){setProjects(prev=>prev.map(p=>p.id===id?{...p,title,artist,image_url:imageUrl}:p));}
 
   async function deleteProject(proj){
     setDeleting(proj.id);
