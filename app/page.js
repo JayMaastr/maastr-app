@@ -251,12 +251,34 @@ function ProjectCard({project,idx,onDelete,onSave}){
       setCropUploading(false);
     }, 'image/jpeg', 0.9);
   };
-  async function saveEdit(){
+  async function saveEdit() {
     if(!editTitle.trim())return;
     setSaving(true);
-    await sb.from('projects').update({title:editTitle.trim(),artist:editArtist.trim(),image_url:editImageUrl||null}).eq('id',project.id);
-    setSaving(false);setEditing(false);onSave(project.id,editTitle.trim(),editArtist.trim(),editImageUrl||null);
+    let finalImageUrl = editImageUrl;
+    if(cropSrc && cropImg) {
+      finalImageUrl = await new Promise(resolve => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 800; canvas.height = 800;
+        const ctx = canvas.getContext('2d');
+        const displayW = 260;
+        const scaleX = cropImg.naturalWidth/displayW;
+        const scaleY = cropImg.naturalHeight/(cropImg.naturalHeight*displayW/cropImg.naturalWidth);
+        ctx.drawImage(cropImg,cropX*scaleX,cropY*scaleY,cropSize*scaleX,cropSize*scaleY,0,0,800,800);
+        canvas.toBlob(async blob => {
+          try {
+            const r = await fetch(UPLOAD_WORKER_URL+'?project=covers&name='+Date.now()+'.jpg',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}});
+            const d = await r.json();
+            resolve(d.url||editImageUrl||null);
+          } catch(e) { resolve(editImageUrl||null); }
+        },'image/jpeg',0.9);
+      });
+      setCropSrc(''); setCropImg(null);
+    }
+    await sb.from('projects').update({title:editTitle.trim(),artist:editArtist.trim(),image_url:finalImageUrl||null}).eq('id',project.id);
+    setSaving(false); setEditing(false);
+    onSave(project.id,editTitle.trim(),editArtist.trim(),finalImageUrl||null);
   }
+
   if(editing)return(
     <div className="card editing" style={{animationDelay:idx*60+'ms'}}>
       <div className="card-edit">
