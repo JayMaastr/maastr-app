@@ -26,7 +26,21 @@ const TONE_BORDER=['#c47800','#7878a0','#0099dd','#c47800','#7878a0','#0099dd','
 const DEFAULT_TONE=4;
 function getToneMemory(n){try{const v=localStorage.getItem('mt_'+n.toLowerCase().replace(/\s+/g,'_'));return v!=null?parseInt(v):DEFAULT_TONE;}catch{return DEFAULT_TONE;}}
 function setToneMemory(n,i){try{localStorage.setItem('mt_'+n.toLowerCase().replace(/\s+/g,'_'),i);}catch{}}
-function makeFallback(seed){const p=[];const h=seed?seed.split('').reduce(function(a,c){return a*31+c.charCodeAt(0);},1):12345;for(let i=0;i<400;i++){const t=Math.sin(h*2.3+i*0.73+i*i*0.0003)*43758.5453;const v=t-Math.floor(t);const wave=Math.sin(i/200*Math.PI)*0.6+0.35;p.push(Math.max(0.05,Math.min(0.95,wave*(0.3+v*0.65))));}return p;};
+function makeFallback(seed){
+  const h=seed?seed.split('').reduce(function(a,c){return(a*31+c.charCodeAt(0))%2147483647;},1):12345;
+  let s=h||12345;
+  const raw=[];
+  for(let i=0;i<400;i++){
+    s=(s*1664525+1013904223)%2147483647;
+    raw.push(s/2147483647);
+  }
+  // Two-pass smoothing for natural-looking waveform
+  const sm=raw.slice();
+  for(let i=2;i<raw.length-2;i++){
+    sm[i]=(raw[i-2]+raw[i-1]+raw[i]*2+raw[i+1]+raw[i+2])/6;
+  }
+  return sm.map(function(v){return Math.max(0.04,Math.min(0.96,0.15+v*0.78));});
+};
 async function computePeaks(file,n=400){try{const ab=await file.arrayBuffer();const ac=new(window.AudioContext||window.webkitAudioContext)();const buf=await ac.decodeAudioData(ab);ac.close();const raw=buf.getChannelData(0),bs=Math.floor(raw.length/n),peaks=[];for(let i=0;i<n;i++){let max=0;const s=i*bs;for(let j=0;j<bs;j++){const v=Math.abs(raw[s+j]||0);if(v>max)max=v;}peaks.push(Math.min(1,max));}const mx=Math.max(...peaks)||1;return peaks.map(p=>Math.max(0.04,(p/mx)*0.95));}catch(e){return[];}}
 function Waveform({peaks,progress,notes,duration,onSeek,seed}){const canvasRef=useRef(null),rafRef=useRef(null),progressRef=useRef(progress),roRef=useRef(null);useEffect(()=>{
     const canvas=canvasRef.current;
