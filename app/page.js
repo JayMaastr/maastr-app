@@ -554,21 +554,14 @@ export default function Dashboard(){
       const toneLabels=['W+L','N+L','B+L','W+N','N+N','B+N','W+G','N+G','B+G'];
       for(let i=0;i<trackSnapshot.length;i++){
         const t=trackSnapshot[i];const res=uploadResults[i];if(!res)continue;
-        await sb.from('tracks').insert({project_id:proj.id,title:t.name,audio_url:res.url,position:i,tone_setting:t.tone||4,tone_label:toneLabels[t.tone||4],duration:0});
+        const {data:newTrack}=await sb.from('tracks').insert({project_id:proj.id,title:t.name,audio_url:res.url,position:i,tone_setting:t.tone||4,tone_label:toneLabels[t.tone||4],duration:0}).select('id').single();
+        // Fire peak extraction immediately — returns 202, runs in background
+        if(newTrack?.id){
+          fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:newTrack.id,projectId:proj.id,audioUrl:res.url})}).catch(()=>{});
+        }
       }
 
-      // Generate peaks in background
-      // Generate peaks for every track and save to track rows
-      uploadResults.forEach((res, i) => {
-        if(!res?.url || !trackSnapshot[i]?.file) return;
-        makePeaksFromFile(trackSnapshot[i].file, peaks => {
-          sb.from('tracks').update({peaks}).eq('project_id', proj.id).eq('position', i);
-          // Also save first track peaks to project for dashboard card
-          if(i === 0) sb.from('projects').update({peaks}).eq('id', proj.id);
-        });
-      });
-
-      // Replace pending project in state with real data
+      // Peaks are extracted server-side via /api/process
       loadProjects();
       setStatusMsg('');
     }catch(e){
