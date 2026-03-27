@@ -491,41 +491,51 @@ export default function Dashboard(){
     if(!projName||tracks.length===0||tracks.some(t=>!t.name.trim()))return;
     setCreating(true);
     try{
-      const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null,peaks:[]}).select().single();
+      const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null,peaks:[],user_id:user.id}).select().single();
       if(projErr)throw projErr;
+
+      // Close modal + fire NC immediately
+      setShowModal(false);
       const _ncId='up_'+Date.now();
-      setShowModal(false);if(window.nc_startUpload)window.nc_startUpload(_ncId,projName,proj.id,projName,tracks.length);
-      if(window.nc_openToUploads)setTimeout(()=>window.nc_openToUploads&&window.nc_openToUploads(),100);
-      for(let i=0;i<tracks.length;i++){
-        const t=tracks[i];
-        setStatusMsg('Uploading '+(i+1)+'/'+tracks.length+': '+t.name);
-        const safeName=sanitizeFilename(t.file.name);
-        const r=await fetch(UPLOAD_WORKER_URL,{method:'POST',headers:{'X-File-Name':safeName,'X-Project-Id':proj.id,'Content-Type':t.file.type||'audio/wav'},body:t.file});
-        const result=await r.json();
-        if(window.nc_updateUpload)window.nc_updateUpload(_ncId,i+1,tracks.length);if(result.url){if(window.__ncDone)window.__ncDone();
-          const tone=TONES[t.tone];
-          const peaks=t.peaks&&t.peaks.length>0?t.peaks:[];
-          // Compute peaks if not already done
-          let finalPeaks=peaks;
-          if(finalPeaks.length===0){
-            setStatusMsg('Computing waveform '+(i+1)+'/'+tracks.length+'…');
-            finalPeaks=await computePeaks(t.file);
-          }
-          const {data:newTrack}=await sb.from('tracks').insert({
-            project_id:proj.id,title:t.name.trim(),audio_url:result.url,mp3_url:result.url,
-            position:i,peaks:finalPeaks,tone_setting:t.tone,tone_label:tone.label
-          }).select().single();
-          if(newTrack){
-            await sb.from('revisions').insert({
-              track_id:newTrack.id,project_id:proj.id,version_number:1,label:'v1',
-              audio_url:result.url,mp3_url:result.url,tone_setting:t.tone,tone_label:tone.label,is_active:true
-            });
-          }
-          if(t.name.trim())setToneMemory(t.name.trim(),t.tone);
-        }
+      // Register one NC entry per file
+      if(window.nc_startUpload){
+        tracks.forEach((t,i)=>window.nc_startUpload(_ncId+'_'+i,t.name||t.file.name,proj.id,projName,1));
       }
-      closeModal();await loadProjects();
-    }catch(e){setStatusMsg('Error: '+e.message);setCreating(false);}
+      setTimeout(()=>window.nc_openToUploads&&window.nc_openToUploads(),100);
+
+      // Upload all files in PARALLEL
+      const uploadResults=await Promise.all(tracks.map(async (t,i)=>{
+        const safeName=sanitizeFilename(t.file.name);
+        try{
+          const r=await fetch(UPLOAD_WORKER_URL+'?project='+proj.id+'&name='+encodeURIComponent(safeName),{
+            method:'POST',headers:{'Content-Type':t.file.type||'audio/wav'},body:t.file
+          });
+          const result=await r.json();
+          if(window.nc_updateUpload)window.nc_updateUpload(_ncId+'_'+i,1,1);
+          return result.url?{...t,url:result.url}:null;
+        }catch(e){console.error('Upload failed:',t.name,e);return null;}
+      }));
+
+      // Insert tracks
+      const toneLabels=['W+L','N+L','B+L','W+N','N+N','B+N','W+G','N+G','B+G'];
+      for(let i=0;i<tracks.length;i++){
+        const t=tracks[i];const res=uploadResults[i];if(!res)continue;
+        await sb.from('tracks').insert({project_id:proj.id,title:t.name,audio_url:res.url,position:i,tone_setting:t.tone||4,tone_label:toneLabels[t.tone||4],duration:0});
+      }
+
+      // Generate peaks
+      if(uploadResults[0]?.url)makePeaksFromFile(tracks[0].file,p=>sb.from('projects').update({peaks:p}).eq('id',proj.id));
+
+      // Add to dashboard state immediately — no refresh needed
+      setProjects(prev=>[proj,...prev]);
+      loadProjects();
+
+      if(window.nc_finishUpload)tracks.forEach((_,i)=>window.nc_finishUpload(_ncId+'_'+i));
+      setStatusMsg('');
+    }catch(e){
+      setStatusMsg('Error: '+e.message);
+    }
+    setDragging(false);setCreating(false);
   }
 
   function closeModal(){setShowModal(false);setProjName('');setProjArtist('');setCoverArtUrl('');setTracks([]);setStatusMsg('');setDragging(false);setCreating(false);if(window.nc_finishUpload)window.nc_finishUpload(_ncId);}
