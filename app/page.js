@@ -492,11 +492,11 @@ export default function Dashboard(){
   function setAllTones(idx){setTracks(prev=>prev.map(t=>({...t,tone:idx})));}
 
   async function createProject(){
-    if(!projName||trackSnapshot.length===0||tracks.some(t=>!t.name.trim()))return;
+    const trackSnapshot=[...tracks];
+    if(!projName||trackSnapshot.length===0||trackSnapshot.some(t=>!t.name.trim()))return;
     setCreating(true);
     try{
       // Insert project first
-      const trackSnapshot=[...tracks];
       const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null,peaks:[],user_id:user.id}).select().single();
       if(projErr)throw projErr;
 
