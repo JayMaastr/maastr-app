@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
 function fmt(s){if(!s||isNaN(s))return'0:00';return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');}
@@ -26,34 +26,40 @@ const TONE_BORDER=['#c47800','#7878a0','#0099dd','#c47800','#7878a0','#0099dd','
 const DEFAULT_TONE=4;
 function getToneMemory(n){try{const v=localStorage.getItem('mt_'+n.toLowerCase().replace(/\s+/g,'_'));return v!=null?parseInt(v):DEFAULT_TONE;}catch{return DEFAULT_TONE;}}
 function setToneMemory(n,i){try{localStorage.setItem('mt_'+n.toLowerCase().replace(/\s+/g,'_'),i);}catch{}}
-function makeFallback(seed){
-  const h=seed?seed.split('').reduce(function(a,c){return(a*31+c.charCodeAt(0))%2147483647;},1):12345;
-  let s=h||12345;
-  const raw=[];
-  for(let i=0;i<400;i++){
-    s=(s*1664525+1013904223)%2147483647;
-    raw.push(s/2147483647);
-  }
-  // Two-pass smoothing for natural-looking waveform
-  const sm=raw.slice();
-  for(let i=2;i<raw.length-2;i++){
-    sm[i]=(raw[i-2]+raw[i-1]+raw[i]*2+raw[i+1]+raw[i+2])/6;
-  }
-  return sm.map(function(v){return Math.max(0.04,Math.min(0.96,0.15+v*0.78));});
-};
+;
 async function computePeaks(file,n=400){try{const ab=await file.arrayBuffer();const ac=new(window.AudioContext||window.webkitAudioContext)();const buf=await ac.decodeAudioData(ab);ac.close();const raw=buf.getChannelData(0),bs=Math.floor(raw.length/n),peaks=[];for(let i=0;i<n;i++){let max=0;const s=i*bs;for(let j=0;j<bs;j++){const v=Math.abs(raw[s+j]||0);if(v>max)max=v;}peaks.push(Math.min(1,max));}const mx=Math.max(...peaks)||1;return peaks.map(p=>Math.max(0.04,(p/mx)*0.95));}catch(e){return[];}}
-function Waveform({peaks,progress,notes,duration,onSeek,seed}){const canvasRef=useRef(null),rafRef=useRef(null),progressRef=useRef(progress),roRef=useRef(null);useEffect(()=>{
+function Waveform({peaks,progress,notes,duration,onSeek}){const canvasRef=useRef(null),rafRef=useRef(null),progressRef=useRef(progress),roRef=useRef(null);useEffect(()=>{
     const canvas=canvasRef.current;
     if(!canvas)return;
+    // On resize: just mark that we need a redraw — don't touch the RAF loop
     const ro=new ResizeObserver(()=>{
-      if(rafRef.current)cancelAnimationFrame(rafRef.current);
-      rafRef.current=requestAnimationFrame(()=>{ rafRef.current=null; });
+      const dpr=window.devicePixelRatio||1;
+      const w=canvas.getBoundingClientRect().width||canvas.parentElement?.clientWidth||600;
+      if(Math.abs(canvas.width-Math.round(w*dpr))>2){
+        canvas.width=Math.round(w*dpr);
+        canvas.height=Math.round(72*dpr);
+      }
     });
     ro.observe(canvas.parentElement||canvas);
     roRef.current=ro;
     return ()=>ro.disconnect();
   },[]);
-  useEffect(()=>{progressRef.current=progress;},[peaks,progress]);const fallbackPeaks=useMemo(()=>makeFallback(seed),[seed]);const stablePeaks=useRef(fallbackPeaks);if(peaks&&peaks.length>4){stablePeaks.current=peaks;}else{stablePeaks.current=fallbackPeaks;}useEffect(()=>{const canvas=canvasRef.current;if(!canvas)return;const dpr=window.devicePixelRatio||1,rect=canvas.getBoundingClientRect(),W=rect.width||canvas.parentElement?.clientWidth||600,H=72;canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);canvas.style.width='100%';canvas.style.height=H+'px';const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);const data=stablePeaks.current,BAR=1,GAP=0.5,STEP=BAR+GAP,numBars=Math.floor(W/STEP),cy=H/2;const heights=new Float32Array(numBars);for(let i=0;i<numBars;i++){const pi=Math.floor(i/numBars*data.length);heights[i]=Math.max(2,data[Math.min(pi,data.length-1)]*(cy-5));}const nc=document.createElement('canvas');nc.width=Math.round(W);nc.height=Math.round(H);const nctx=nc.getContext('2d');if(notes&&notes.length&&duration>0){notes.forEach(n=>{if(n.timestamp_sec==null||n.timestamp_sec>duration)return;const x=(n.timestamp_sec/duration)*W;nctx.save();nctx.strokeStyle='rgba(255,255,255,0.25)';nctx.lineWidth=1;nctx.setLineDash([2,3]);nctx.beginPath();nctx.moveTo(x,3);nctx.lineTo(x,H-3);nctx.stroke();nctx.restore();nctx.fillStyle='#e8a020';nctx.beginPath();nctx.arc(x,3,3,0,Math.PI*2);nctx.fill();});}let lastPlayX=-999;function draw(){const prog=Math.max(0,Math.min(1,progressRef.current||0)),playX=prog*W;if(Math.abs(playX-lastPlayX)>=.5){lastPlayX=playX;const cutBar=Math.floor(prog*numBars);ctx.clearRect(0,0,W,H);
+  useEffect(()=>{progressRef.current=progress;},[peaks,progress]);const stablePeaks=useRef(peaks&&peaks.length>4?peaks:null);if(peaks&&peaks.length>4)stablePeaks.current=peaks;useEffect(()=>{const canvas=canvasRef.current;if(!canvas)return;const dpr=window.devicePixelRatio||1,rect=canvas.getBoundingClientRect(),W=rect.width||canvas.parentElement?.clientWidth||600,H=72;canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);canvas.style.width='100%';canvas.style.height=H+'px';const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);const data=stablePeaks.current;
+        // Show shimmer loading animation when no real peaks yet
+        if(!data){
+          ctx.clearRect(0,0,W,H);
+          const numShim=Math.floor(W/3);
+          const t=Date.now()/800;
+          for(let i=0;i<numShim;i++){
+            const wave=0.18+0.12*Math.sin(i*0.18+t)+0.06*Math.sin(i*0.07-t*1.3);
+            const h=Math.max(4,wave*(H/2-4));
+            const alpha=0.12+0.08*Math.sin(i*0.15+t*1.5);
+            ctx.fillStyle='rgba(232,160,32,'+alpha.toFixed(3)+')';
+            ctx.fillRect(i*3,H/2-h,1,h*2);
+          }
+          return;
+        }
+        const BAR=1,GAP=0.5,STEP=BAR+GAP,numBars=Math.floor(W/STEP),cy=H/2;const heights=new Float32Array(numBars);for(let i=0;i<numBars;i++){const pi=Math.floor(i/numBars*data.length);heights[i]=Math.max(2,data[Math.min(pi,data.length-1)]*(cy-5));}const nc=document.createElement('canvas');nc.width=Math.round(W);nc.height=Math.round(H);const nctx=nc.getContext('2d');if(notes&&notes.length&&duration>0){notes.forEach(n=>{if(n.timestamp_sec==null||n.timestamp_sec>duration)return;const x=(n.timestamp_sec/duration)*W;nctx.save();nctx.strokeStyle='rgba(255,255,255,0.25)';nctx.lineWidth=1;nctx.setLineDash([2,3]);nctx.beginPath();nctx.moveTo(x,3);nctx.lineTo(x,H-3);nctx.stroke();nctx.restore();nctx.fillStyle='#e8a020';nctx.beginPath();nctx.arc(x,3,3,0,Math.PI*2);nctx.fill();});}let lastPlayX=-999;function draw(){const prog=Math.max(0,Math.min(1,progressRef.current||0)),playX=prog*W;if(Math.abs(playX-lastPlayX)>=.5){lastPlayX=playX;const cutBar=Math.floor(prog*numBars);ctx.clearRect(0,0,W,H);
         // Draw bars with gradient and reflection
         for(let i=0;i<numBars;i++){
           const h=heights[i];
@@ -124,7 +130,7 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
         </div>
       </div>
       {revSwitcherOpen&&revisions.length>1&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
-      <div className="td-wave-wrap"><Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek} seed={track?.id}/><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
+      <div className="td-wave-wrap"><Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
       <div className="td-notes-scroll">
         {notes.length>0?(<><div className="td-notes-label">NOTES{displayRev&&<span className="td-notes-rev"> — {displayRev.label||'v1'}</span>}</div>{notes.map(n=>(<div key={n.id} className="td-note-item"><div className="td-note-meta"><span className="td-note-author">{n.author_name||'You'}</span>{n.timestamp_sec!=null&&(<button className="td-note-pill" onClick={()=>onSeekToTime(n.timestamp_sec)}><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>{n.timestamp_label||fmt(n.timestamp_sec)}</button>)}</div><div className="td-note-body">{n.body}</div><span className="td-note-date">{new Date(n.created_at).toLocaleDateString()}</span></div>))}</>):(<div className="td-notes-empty">No notes yet — add the first one below</div>)}
       </div>
