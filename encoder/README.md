@@ -39,3 +39,4 @@ ENCODE_SECRET=<same-random-secret>
 5. Uploads all segments to R2 under `hls/<trackId>/`
 6. Updates the track's `hls_url` in Supabase
 7. Player uses hls.js to stream from the m3u8 URL
+
