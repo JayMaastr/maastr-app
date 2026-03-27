@@ -31,13 +31,10 @@ async function computePeaks(file,n=400){try{const ab=await file.arrayBuffer();co
 function Waveform({peaks, progress, notes, duration, onSeek}) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
+  // Update progress ref synchronously every render — no effect needed
   const progressRef = useRef(progress);
-  const roRef = useRef(null);
+  progressRef.current = progress;
 
-  // Keep progress ref current without re-running full draw
-  useEffect(() => { progressRef.current = progress; }, [progress]);
-
-  // Main draw effect — runs on mount and when peaks change
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -45,28 +42,38 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
 
     function draw() {
       if (!running) return;
+
       const dpr = window.devicePixelRatio || 1;
-      const W = canvas.parentElement ? canvas.parentElement.clientWidth : 600;
+      const container = canvas.parentElement;
+      const W = container ? container.clientWidth : 600;
       const H = 72;
-      if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
-        canvas.width = Math.round(W * dpr);
-        canvas.height = Math.round(H * dpr);
+
+      // Resize canvas if needed (handles window resize + DPR)
+      const targetW = Math.round(W * dpr);
+      const targetH = Math.round(H * dpr);
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
         canvas.style.width = '100%';
         canvas.style.height = H + 'px';
       }
+
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
       ctx.scale(dpr, dpr);
 
-      if (!peaks || peaks.length < 4) {
-        // No peaks yet — draw a flat center line
+      const hasRealPeaks = peaks && peaks.length > 4;
+
+      if (!hasRealPeaks) {
+        // Clean flat center line — no fake waveforms ever
         ctx.strokeStyle = 'rgba(232,160,32,0.2)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(0, H / 2);
         ctx.lineTo(W, H / 2);
         ctx.stroke();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.restore();
         rafRef.current = requestAnimationFrame(draw);
         return;
       }
@@ -77,83 +84,69 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
       const cutBar = Math.floor(prog * numBars);
       const cy = H / 2;
 
-      // Pre-compute heights
-      const heights = new Float32Array(numBars);
       for (let i = 0; i < numBars; i++) {
         const pi = Math.min(Math.floor(i / numBars * peaks.length), peaks.length - 1);
-        heights[i] = Math.max(2, peaks[pi] * (cy - 4));
-      }
-
-      // Draw bars
-      for (let i = 0; i < numBars; i++) {
-        const h = heights[i];
+        const h = Math.max(2, peaks[pi] * (cy - 4));
         const played = i < cutBar;
         const alpha = played ? 1 : 0.3;
-        // Upper bar gradient
+
+        // Bar gradient
         const grad = ctx.createLinearGradient(0, cy - h, 0, cy);
-        grad.addColorStop(0, played ? 'rgba(232,160,32,'+alpha+')' : 'rgba(200,140,30,'+alpha+')');
-        grad.addColorStop(1, played ? 'rgba(200,130,20,'+alpha+')' : 'rgba(180,120,15,'+alpha+')');
+        grad.addColorStop(0, 'rgba(232,160,32,' + alpha + ')');
+        grad.addColorStop(1, 'rgba(200,130,20,' + alpha + ')');
         ctx.fillStyle = grad;
         ctx.fillRect(i * STEP, cy - h, BAR, h);
+
         // Reflection
-        const rGrad = ctx.createLinearGradient(0, cy, 0, cy + h * 0.6);
-        rGrad.addColorStop(0, 'rgba(232,160,32,'+(alpha*0.4)+')');
-        rGrad.addColorStop(1, 'rgba(232,160,32,0)');
-        ctx.fillStyle = rGrad;
+        const rg = ctx.createLinearGradient(0, cy, 0, cy + h * 0.6);
+        rg.addColorStop(0, 'rgba(232,160,32,' + (alpha * 0.4) + ')');
+        rg.addColorStop(1, 'rgba(232,160,32,0)');
+        ctx.fillStyle = rg;
         ctx.fillRect(i * STEP, cy, BAR, h * 0.6);
       }
 
       // Playhead
       if (prog > 0.001) {
         const px = Math.round(prog * W);
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
         ctx.fillRect(px, 0, 1, H);
-        // Dot
         ctx.beginPath();
-        ctx.arc(px, 4, 4, 0, Math.PI * 2);
+        ctx.arc(px, 5, 4, 0, Math.PI * 2);
         ctx.fillStyle = '#e8a020';
         ctx.fill();
       }
 
-      // Time stamps
-      ctx.font = '11px DM Mono, monospace';
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      ctx.fillText(fmt(prog * duration), 4, H - 4);
-      ctx.textAlign = 'right';
-      ctx.fillText(fmt(duration), W - 4, H - 4);
-      ctx.textAlign = 'left';
-
       // Note markers
-      if (notes && notes.length) {
-        const activeNotes = notes.filter(n => !n.resolved);
-        for (const note of activeNotes) {
-          if (!note.timestamp_sec || !duration) continue;
+      if (notes && notes.length && duration > 0) {
+        for (const note of notes.filter(n => !n.resolved)) {
+          if (!note.timestamp_sec) continue;
           const nx = (note.timestamp_sec / duration) * W;
           ctx.fillStyle = '#e8a020';
           ctx.fillRect(nx - 1, 0, 2, H);
-          ctx.beginPath();
-          ctx.arc(nx, H - 8, 3, 0, Math.PI * 2);
-          ctx.fill();
         }
       }
 
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      // Time labels
+      if (duration > 0) {
+        ctx.font = '11px "DM Mono", monospace';
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.fillText(fmt(prog * duration), 4, H - 4);
+        ctx.textAlign = 'right';
+        ctx.fillText(fmt(duration), W - 4, H - 4);
+        ctx.textAlign = 'left';
+      }
+
+      ctx.restore();
       rafRef.current = requestAnimationFrame(draw);
     }
 
     draw();
 
-    // ResizeObserver — just let the draw loop handle resize naturally
-    const ro = new ResizeObserver(() => {}); // canvas checks size on every frame
-    if (canvas.parentElement) ro.observe(canvas.parentElement);
-    roRef.current = ro;
-
     return () => {
       running = false;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      ro.disconnect();
     };
-  }, [peaks, notes, duration]); // Re-run when peaks/notes/duration change
+  }, [peaks, notes, duration]);
 
   function handleClick(e) {
     if (!onSeek || !duration) return;
@@ -162,7 +155,7 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
   }
 
   return (
-    <div className="td-wave-wrap" onClick={handleClick} style={{cursor:'pointer',width:'100%',position:'relative'}}>
+    <div style={{cursor:'pointer',width:'100%',position:'relative'}} onClick={handleClick}>
       <canvas ref={canvasRef} style={{display:'block',width:'100%',height:'72px'}}/>
     </div>
   );
