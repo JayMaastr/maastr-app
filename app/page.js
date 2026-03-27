@@ -151,7 +151,7 @@ function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, o
 function sanitizeFilename(name){return name.replace(/[^a-zA-Z0-9._-]/g,'_');}
 function urlToKey(url){try{return decodeURIComponent(new URL(url).pathname.replace(/^\//,''));}catch{return null;}}
 
-function ProjectCard({project,idx,onDelete,onSave,unreadCount}){
+function ProjectCard({project,idx,onDelete,onSave,unreadCount,onRefresh}){
   const [menuOpen,setMenuOpen]=useState(false);
   const [editing,setEditing]=useState(false);
   const [editTitle,setEditTitle]=useState(project.title||'');
@@ -169,7 +169,12 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount}){
   const [saving,setSaving]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const menuRef=useRef(null);
-  const tc=(project._pendingTracks||project.tracks)?.length||0;const isPending=!!project._pendingTracks;
+  const tc=(project._pendingTracks||project.tracks)?.length||project.tracks?.length||0;const isPending=!!project._pending;
+  useEffect(()=>{
+    if(!isPending)return;
+    const t=setTimeout(()=>{ if(onRefresh)onRefresh(); },4000);
+    return ()=>clearTimeout(t);
+  },[isPending,onRefresh]);
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const date=new Date(project.updated_at||project.created_at);
   const dateStr=months[date.getMonth()]+' '+date.getDate()+', '+date.getFullYear();
@@ -356,9 +361,9 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount}){
       onClick={e=>{if(menuOpen){setMenuOpen(false);e.stopPropagation();return;}if(!isPending)window.location.href='/player?project='+project.id;}}>
       <div className="card-header" style={{gap:0,flexDirection:'column',alignItems:'stretch',padding:0}}>
         <div className="card-art-full" style={{position:'relative'}}>
-            {isPending&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.55)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:2,borderRadius:'inherit'}}>
-              <div style={{width:28,height:28,border:'3px solid var(--amber)',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite',marginBottom:8}}/>
-              <span style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--amber)',letterSpacing:'.06em',textTransform:'uppercase',fontWeight:600}}>Uploading…</span>
+            {isPending&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.65)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:2,borderRadius:'inherit',gap:8}}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{animation:'spin 1.2s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+              <span style={{fontFamily:'var(--fm)',fontSize:9,color:'var(--amber)',letterSpacing:'.08em',textTransform:'uppercase',fontWeight:700}}>Processing…</span>
             </div>}
           {project.image_url
             ? <img src={project.image_url} alt={project.title}/>
