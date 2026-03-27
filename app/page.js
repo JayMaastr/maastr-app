@@ -3,11 +3,7 @@ import NotificationCenter from '@/app/components/NotificationCenter';
 import { useEffect, useState, useRef } from 'react';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
-const STABLE_PEAKS = (() => {
-  const p=[]; let s=0xABCDEF;
-  for(let i=0;i<100;i++){s^=s<<13;s^=s>>17;s^=s<<5;s>>>=0;p.push(Math.max(0.04,Math.min(0.96,(0.3+Math.sin(i/100*Math.PI)*0.4)*(0.5+s/0xFFFFFFFF*0.5))));}
-  return p;
-})();
+);
 
 const TONES = [
   {label:'Warm + Loud',   short:'W+L', desc:'Heavy low end, maximum punch. Metal, hip-hop, EDM.'},
@@ -32,38 +28,13 @@ function setToneMemory(name,idx) {
 }
 
 // Compute waveform peaks from an audio file using Web Audio API
-async function computePeaks(file, numPeaks = 100) {
-  try {
-    const arrayBuffer = await file.arrayBuffer();
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    audioCtx.close();
-    const rawData = audioBuffer.getChannelData(0);
-    const blockSize = Math.floor(rawData.length / numPeaks);
-    const peaks = [];
-    for (let i = 0; i < numPeaks; i++) {
-      let max = 0;
-      const start = i * blockSize;
-      for (let j = 0; j < blockSize; j++) {
-        const val = Math.abs(rawData[start + j] || 0);
-        if (val > max) max = val;
-      }
-      peaks.push(Math.min(1, max));
-    }
-    // Normalize so loudest peak = 0.95
-    const maxPeak = Math.max(...peaks) || 1;
-    return peaks.map(p => Math.max(0.04, (p / maxPeak) * 0.95));
-  } catch(e) {
-    console.warn('Peak computation failed:', e.message);
-    return [];
-  }
-}
+
 
 function WaveformCanvas({peaks}) {
   const ref=useRef(null);
   useEffect(()=>{
     const canvas=ref.current; if(!canvas) return;
-    const data=(peaks&&peaks.length>4)?peaks:STABLE_PEAKS;
+    const data=(peaks&&peaks.length>4)?peaks:null;
     const W=canvas.offsetWidth||268,H=48;
     canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;
     canvas.style.width=W+'px';canvas.style.height=H+'px';
@@ -469,9 +440,7 @@ export default function Dashboard(){
     // Compute peaks for each new file in the background
     audio.forEach(file=>{
       if(!Array.from(prev||[]).find(t=>t.file.name===file.name)) {
-        computePeaks(file).then(peaks=>{
-          setTracks(prev=>prev.map(t=>t.file.name===file.name?{...t,peaks,peaksComputed:peaks.length>0}:t));
-        });
+
       }
     });
   }
@@ -484,9 +453,7 @@ export default function Dashboard(){
       const newTracks=audio.filter(f=>!existing.has(f.name)).map(f=>({file:f,name:'',tone:DEFAULT_TONE,peaks:[],peaksComputed:false,isRevision:false,existingTrackId:null}));
       // Compute peaks for each new file asynchronously
       newTracks.forEach(t=>{
-        computePeaks(t.file).then(peaks=>{
-          setTracks(prev=>prev.map(tr=>tr.file.name===t.file.name?{...tr,peaks,peaksComputed:peaks.length>0}:tr));
-        });
+;
       });
       return [...prev,...newTracks];
     });
