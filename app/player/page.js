@@ -28,78 +28,146 @@ function getToneMemory(n){try{const v=localStorage.getItem('mt_'+n.toLowerCase()
 function setToneMemory(n,i){try{localStorage.setItem('mt_'+n.toLowerCase().replace(/\s+/g,'_'),i);}catch{}}
 ;
 async function computePeaks(file,n=400){try{const ab=await file.arrayBuffer();const ac=new(window.AudioContext||window.webkitAudioContext)();const buf=await ac.decodeAudioData(ab);ac.close();const raw=buf.getChannelData(0),bs=Math.floor(raw.length/n),peaks=[];for(let i=0;i<n;i++){let max=0;const s=i*bs;for(let j=0;j<bs;j++){const v=Math.abs(raw[s+j]||0);if(v>max)max=v;}peaks.push(Math.min(1,max));}const mx=Math.max(...peaks)||1;return peaks.map(p=>Math.max(0.04,(p/mx)*0.95));}catch(e){return[];}}
-function Waveform({peaks,progress,notes,duration,onSeek}){const canvasRef=useRef(null),rafRef=useRef(null),progressRef=useRef(progress),roRef=useRef(null),shimRafRef=useRef(null);useEffect(()=>{
-    const canvas=canvasRef.current;
-    if(!canvas)return;
-    // On resize: just mark that we need a redraw — don't touch the RAF loop
-    const ro=new ResizeObserver(()=>{
-      const dpr=window.devicePixelRatio||1;
-      const w=canvas.getBoundingClientRect().width||canvas.parentElement?.clientWidth||600;
-      if(Math.abs(canvas.width-Math.round(w*dpr))>2){
-        canvas.width=Math.round(w*dpr);
-        canvas.height=Math.round(72*dpr);
+function Waveform({peaks, progress, notes, duration, onSeek}) {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const progressRef = useRef(progress);
+  const roRef = useRef(null);
+
+  // Keep progress ref current without re-running full draw
+  useEffect(() => { progressRef.current = progress; }, [progress]);
+
+  // Main draw effect — runs on mount and when peaks change
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let running = true;
+
+    function draw() {
+      if (!running) return;
+      const dpr = window.devicePixelRatio || 1;
+      const W = canvas.parentElement ? canvas.parentElement.clientWidth : 600;
+      const H = 72;
+      if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        canvas.style.width = '100%';
+        canvas.style.height = H + 'px';
       }
-    });
-    ro.observe(canvas.parentElement||canvas);
-    roRef.current=ro;
-    return ()=>ro.disconnect();
-  },[]);
-  // Shimmer animation — runs its own RAF loop when no peaks loaded yet
-  useEffect(()=>{
-    if(peaks&&peaks.length>4){
-      if(shimRafRef.current)cancelAnimationFrame(shimRafRef.current);
-      shimRafRef.current=null;
-      return;
-    }
-    const canvas=canvasRef.current;
-    if(!canvas)return;
-    function drawShimmer(){
-      const dpr=window.devicePixelRatio||1;
-      const W=canvas.getBoundingClientRect().width||canvas.parentElement?.clientWidth||600;
-      const H=72;
-      canvas.width=Math.round(W*dpr);
-      canvas.height=Math.round(H*dpr);
-      canvas.style.width='100%';
-      canvas.style.height=H+'px';
-      const ctx=canvas.getContext('2d');
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.scale(dpr,dpr);
-      const n=Math.floor(W/3);
-      const t=Date.now()/900;
-      for(let i=0;i<n;i++){
-        const wave=0.15+0.1*Math.sin(i*0.2+t)+0.05*Math.sin(i*0.08-t*1.4);
-        const h=Math.max(3,wave*(H/2-3));
-        const alpha=0.1+0.07*Math.sin(i*0.16+t*1.6);
-        ctx.fillStyle='rgba(232,160,32,'+alpha.toFixed(3)+')';
-        ctx.fillRect(i*3,H/2-h,1,h*2);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(dpr, dpr);
+
+      if (!peaks || peaks.length < 4) {
+        // No peaks yet — draw a flat center line
+        ctx.strokeStyle = 'rgba(232,160,32,0.2)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, H / 2);
+        ctx.lineTo(W, H / 2);
+        ctx.stroke();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        rafRef.current = requestAnimationFrame(draw);
+        return;
       }
-      shimRafRef.current=requestAnimationFrame(drawShimmer);
+
+      const prog = progressRef.current || 0;
+      const BAR = 1, GAP = 0.5, STEP = BAR + GAP;
+      const numBars = Math.floor(W / STEP);
+      const cutBar = Math.floor(prog * numBars);
+      const cy = H / 2;
+
+      // Pre-compute heights
+      const heights = new Float32Array(numBars);
+      for (let i = 0; i < numBars; i++) {
+        const pi = Math.min(Math.floor(i / numBars * peaks.length), peaks.length - 1);
+        heights[i] = Math.max(2, peaks[pi] * (cy - 4));
+      }
+
+      // Draw bars
+      for (let i = 0; i < numBars; i++) {
+        const h = heights[i];
+        const played = i < cutBar;
+        const alpha = played ? 1 : 0.3;
+        // Upper bar gradient
+        const grad = ctx.createLinearGradient(0, cy - h, 0, cy);
+        grad.addColorStop(0, played ? 'rgba(232,160,32,'+alpha+')' : 'rgba(200,140,30,'+alpha+')');
+        grad.addColorStop(1, played ? 'rgba(200,130,20,'+alpha+')' : 'rgba(180,120,15,'+alpha+')');
+        ctx.fillStyle = grad;
+        ctx.fillRect(i * STEP, cy - h, BAR, h);
+        // Reflection
+        const rGrad = ctx.createLinearGradient(0, cy, 0, cy + h * 0.6);
+        rGrad.addColorStop(0, 'rgba(232,160,32,'+(alpha*0.4)+')');
+        rGrad.addColorStop(1, 'rgba(232,160,32,0)');
+        ctx.fillStyle = rGrad;
+        ctx.fillRect(i * STEP, cy, BAR, h * 0.6);
+      }
+
+      // Playhead
+      if (prog > 0.001) {
+        const px = Math.round(prog * W);
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillRect(px, 0, 1, H);
+        // Dot
+        ctx.beginPath();
+        ctx.arc(px, 4, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#e8a020';
+        ctx.fill();
+      }
+
+      // Time stamps
+      ctx.font = '11px DM Mono, monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillText(fmt(prog * duration), 4, H - 4);
+      ctx.textAlign = 'right';
+      ctx.fillText(fmt(duration), W - 4, H - 4);
+      ctx.textAlign = 'left';
+
+      // Note markers
+      if (notes && notes.length) {
+        const activeNotes = notes.filter(n => !n.resolved);
+        for (const note of activeNotes) {
+          if (!note.timestamp_sec || !duration) continue;
+          const nx = (note.timestamp_sec / duration) * W;
+          ctx.fillStyle = '#e8a020';
+          ctx.fillRect(nx - 1, 0, 2, H);
+          ctx.beginPath();
+          ctx.arc(nx, H - 8, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      rafRef.current = requestAnimationFrame(draw);
     }
-    drawShimmer();
-    return()=>{if(shimRafRef.current)cancelAnimationFrame(shimRafRef.current);};
-  },[peaks]);
-  useEffect(()=>{progressRef.current=progress;},[peaks,progress]);const stablePeaks=useRef(peaks&&peaks.length>4?peaks:null);if(peaks&&peaks.length>4)stablePeaks.current=peaks;useEffect(()=>{const canvas=canvasRef.current;if(!canvas)return;const dpr=window.devicePixelRatio||1,rect=canvas.getBoundingClientRect(),W=rect.width||canvas.parentElement?.clientWidth||600,H=72;canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);canvas.style.width='100%';canvas.style.height=H+'px';const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);const data=stablePeaks.current;
-        // No real peaks yet — shimmer useEffect handles the animation
-        if(!data){ctx.clearRect(0,0,W,H);return;}
-        const BAR=1,GAP=0.5,STEP=BAR+GAP,numBars=Math.floor(W/STEP),cy=H/2;const heights=new Float32Array(numBars);for(let i=0;i<numBars;i++){const pi=Math.floor(i/numBars*data.length);heights[i]=Math.max(2,data[Math.min(pi,data.length-1)]*(cy-5));}const nc=document.createElement('canvas');nc.width=Math.round(W);nc.height=Math.round(H);const nctx=nc.getContext('2d');if(notes&&notes.length&&duration>0){notes.forEach(n=>{if(n.timestamp_sec==null||n.timestamp_sec>duration)return;const x=(n.timestamp_sec/duration)*W;nctx.save();nctx.strokeStyle='rgba(255,255,255,0.25)';nctx.lineWidth=1;nctx.setLineDash([2,3]);nctx.beginPath();nctx.moveTo(x,3);nctx.lineTo(x,H-3);nctx.stroke();nctx.restore();nctx.fillStyle='#e8a020';nctx.beginPath();nctx.arc(x,3,3,0,Math.PI*2);nctx.fill();});}let lastPlayX=-999;function draw(){const prog=Math.max(0,Math.min(1,progressRef.current||0)),playX=prog*W;if(Math.abs(playX-lastPlayX)>=.5){lastPlayX=playX;const cutBar=Math.floor(prog*numBars);ctx.clearRect(0,0,W,H);
-        // Draw bars with gradient and reflection
-        for(let i=0;i<numBars;i++){
-          const h=heights[i];
-          const played=i<cutBar;
-          const baseAlpha=played?1:0.35;
-          // Upper bar — gradient from tip (bright) to center (slightly dimmer)
-          const grad=ctx.createLinearGradient(0,cy-h,0,cy);
-          grad.addColorStop(0,played?'rgba(232,160,32,'+baseAlpha+')':'rgba(232,160,32,'+baseAlpha+')');
-          grad.addColorStop(1,played?'rgba(200,130,20,'+baseAlpha+')':'rgba(180,120,15,'+baseAlpha+')');
-          ctx.fillStyle=grad;
-          ctx.fillRect(i*STEP,cy-h,BAR,h);
-          // Lower reflection — mirror with fade
-          const reflGrad=ctx.createLinearGradient(0,cy,0,cy+h);
-          reflGrad.addColorStop(0,played?'rgba(232,160,32,'+(baseAlpha*0.5)+')':'rgba(232,160,32,'+(baseAlpha*0.4)+')');
-          reflGrad.addColorStop(1,'rgba(232,160,32,0)');
-          ctx.fillStyle=reflGrad;
-          ctx.fillRect(i*STEP,cy,BAR,h*0.6);
-        }ctx.drawImage(nc,0,0);if(prog>.001){const px=Math.round(playX);ctx.save();ctx.shadowColor='rgba(232,160,32,0.8)';ctx.shadowBlur=8;ctx.fillStyle='#fff';ctx.fillRect(px-1,0,2,H);ctx.fillStyle='#ffcc44';ctx.beginPath();ctx.arc(px,3,4,0,Math.PI*2);ctx.fill();ctx.restore();}}rafRef.current=requestAnimationFrame(draw);}draw();return()=>{if(rafRef.current)cancelAnimationFrame(rafRef.current);};},[notes,duration]);return(<div onClick={e=>{if(!onSeek)return;const r=e.currentTarget.getBoundingClientRect();onSeek(Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)));}} style={{width:'100%',height:72,cursor:'crosshair',userSelect:'none',WebkitUserSelect:'none'}}><canvas ref={canvasRef} style={{display:'block',width:'100%',height:72}}/></div>);}
+
+    draw();
+
+    // ResizeObserver — just let the draw loop handle resize naturally
+    const ro = new ResizeObserver(() => {}); // canvas checks size on every frame
+    if (canvas.parentElement) ro.observe(canvas.parentElement);
+    roRef.current = ro;
+
+    return () => {
+      running = false;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      ro.disconnect();
+    };
+  }, [peaks, notes, duration]); // Re-run when peaks/notes/duration change
+
+  function handleClick(e) {
+    if (!onSeek || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    onSeek((e.clientX - rect.left) / rect.width);
+  }
+
+  return (
+    <div className="td-wave-wrap" onClick={handleClick} style={{cursor:'pointer',width:'100%',position:'relative'}}>
+      <canvas ref={canvasRef} style={{display:'block',width:'100%',height:'72px'}}/>
+    </div>
+  );
+}
+
 function FixedDropdown({anchorRef,open,onClose,children}){const [pos,setPos]=useState({top:0,right:0});function recalc(){if(!anchorRef.current)return;const rect=anchorRef.current.getBoundingClientRect();setPos({top:rect.bottom+4,right:window.innerWidth-rect.right});}useEffect(()=>{if(!open)return;recalc();window.addEventListener('scroll',recalc,true);return()=>{window.removeEventListener('scroll',recalc,true);};},[open]);if(!open)return null;return(<><div style={{position:'fixed',inset:0,zIndex:998,background:'transparent'}} onClick={onClose}/><div style={{position:'fixed',top:pos.top,right:pos.right,zIndex:999,background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:10,minWidth:176,boxShadow:'0 8px 40px rgba(0,0,0,.6)',overflow:'hidden'}}>{children}</div></>);}
 
 /* ToneGrid — bright color swatches, no text in cells, X through used (color kept) */
@@ -224,11 +292,50 @@ const [showInvite,setShowInvite]=useState(false);
   const activeTrack=tracks.find(t=>t.id===activeTrackId)||null;
   const activeIdx=tracks.findIndex(t=>t.id===activeTrackId);
   const audioUrl=activeRevision?activeRevision.mp3_url||activeRevision.audio_url:activeTrack?.mp3_url||activeTrack?.audio_url;
-  useEffect(()=>{const el=audioRef.current;if(!el)return;
-    const mp3Src=activeRevision?.mp3_url||activeTrack?.mp3_url||'';
-    const wavSrc=activeRevision?.audio_url||activeTrack?.audio_url||audioUrl||'';
-    const playUrl=useWav?wavSrc:(mp3Src||wavSrc);
-    if(audioUrl){if(el.src!==playUrl){el.src=playUrl;el.load();setDuration(0);setCurrentTime(0);}}else{el.src='';el.load();setDuration(0);setCurrentTime(0);}},[audioUrl,useWav]);
+  useEffect(()=>{
+    const el=audioRef.current;
+    if(!el||!activeTrackId)return;
+    const track=tracks.find(t=>t.id===activeTrackId);
+    const rev=activeRevision;
+    const hlsUrl=rev?.hls_url||track?.hls_url||null;
+    const wavUrl=rev?.audio_url||track?.audio_url||null;
+    if(!hlsUrl&&!wavUrl)return;
+    // Destroy any existing HLS instance
+    if(window.__hlsInst){window.__hlsInst.destroy();window.__hlsInst=null;}
+    el.pause();
+    if(hlsUrl){
+      // HLS path — instant start, FLAC quality
+      import('hls.js').then(({default:Hls})=>{
+        if(Hls.isSupported()){
+          const hls=new Hls({startLevel:-1,autoStartLoad:true,lowLatencyMode:false});
+          hls.loadSource(hlsUrl);
+          hls.attachMedia(el);
+          hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+            if(window.__pendingSeek){el.currentTime=window.__pendingSeek*el.duration||0;window.__pendingSeek=null;}
+          });
+          hls.on(Hls.Events.ERROR,(_,data)=>{
+            if(data.fatal){
+              console.warn('[hls] fatal error, falling back to WAV',data);
+              hls.destroy();
+              if(wavUrl){el.src=wavUrl;el.load();}
+            }
+          });
+          window.__hlsInst=hls;
+        } else if(el.canPlayType('application/vnd.apple.mpegurl')){
+          // Safari handles HLS natively
+          el.src=hlsUrl; el.load();
+        } else if(wavUrl){
+          el.src=wavUrl; el.load();
+        }
+      }).catch(()=>{if(wavUrl){el.src=wavUrl;el.load();}});
+    } else {
+      // WAV fallback — direct stream
+      el.src=wavUrl; el.load();
+    }
+    return ()=>{
+      if(window.__hlsInst){window.__hlsInst.destroy();window.__hlsInst=null;}
+    };
+  },[activeTrackId,activeRevision,tracks]);
   function playTrack(trackId){if(trackId===activeTrackId){if(audioRef.current){if(playing){audioRef.current.pause();setPlaying(false);}else{audioRef.current.play().catch(()=>{});setPlaying(true);}}return;}if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(trackId);const t=tracks.find(tr=>tr.id===trackId);if(!t)return;const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
   function openDetail(track){if(track.id!==activeTrackId){if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(track.id);const rev=track.revisions?.find(r=>r.is_active)||track.revisions?.[track.revisions.length-1]||null;setActiveRevision(rev);loadNotes(track.id,rev?.id);}setDetailTrack(track);}
   function jumpToTrack(idx){if(idx<0||idx>=tracks.length)return;const t=tracks[idx];if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(t.id);const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);setDetailTrack(prev=>prev?t:null);setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
