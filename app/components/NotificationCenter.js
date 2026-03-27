@@ -172,7 +172,7 @@ export default function NotificationCenter({ user }) {
                       onMouseLeave={e => e.currentTarget.style.background=''}
                     >
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                        <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.projectName}</div>
+                        <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.label||u.projectName}</div>
                         <div style={{fontFamily:'var(--fm)',fontSize:10,color:u.status==='done'?'#4caf50':'var(--amber)',fontWeight:600}}>
                           {u.status==='done'?'✓ Done':u.done+'%'}
                         </div>
@@ -180,7 +180,7 @@ export default function NotificationCenter({ user }) {
                       <div style={{height:4,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
                         <div style={{height:'100%',borderRadius:2,background:u.status==='done'?'#4caf50':'var(--amber)',width:u.done+'%',transition:'width .3s'}}/>
                       </div>
-                      {u.label && <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',marginTop:5}}>{u.label}</div>}
+                      <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',marginTop:5}}>{u.projectName}</div>
                     </div>
                   ))
               }
