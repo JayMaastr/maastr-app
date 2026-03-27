@@ -494,7 +494,7 @@ export default function Dashboard(){
       const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null,peaks:[]}).select().single();
       if(projErr)throw projErr;
       const _ncId='up_'+Date.now();
-      setShowCreate(false);if(window.nc_startUpload)window.nc_startUpload(_ncId,projName,proj.id,projName,tracks.length);
+      setShowModal(false);if(window.nc_startUpload)window.nc_startUpload(_ncId,projName,proj.id,projName,tracks.length);
       if(window.nc_openToUploads)setTimeout(()=>window.nc_openToUploads&&window.nc_openToUploads(),100);
       for(let i=0;i<tracks.length;i++){
         const t=tracks[i];
