@@ -186,6 +186,41 @@ const [showInvite,setShowInvite]=useState(false);
     return ()=>el.removeEventListener('loadedmetadata',doSeek);
   },[pendingSeek,activeTrackId]);
 
+  useEffect(()=>{
+    if(!activeTrackId||!tracks.length)return;
+    const track=tracks.find(t=>t.id===activeTrackId);
+    if(!track||!track.audio_url||(track.peaks&&track.peaks.length>10))return;
+    // Generate peaks from audio URL using Web Audio API
+    let cancelled=false;
+    (async()=>{
+      try{
+        const resp=await fetch(track.audio_url);
+        if(!resp.ok||cancelled)return;
+        const arrayBuf=await resp.arrayBuffer();
+        if(cancelled)return;
+        const ctx=new(window.AudioContext||window.webkitAudioContext)();
+        const audioBuf=await ctx.decodeAudioData(arrayBuf);
+        ctx.close();
+        if(cancelled)return;
+        const raw=audioBuf.getChannelData(0);
+        const numPeaks=200;
+        const blockSize=Math.floor(raw.length/numPeaks);
+        const peaks=[];
+        for(let i=0;i<numPeaks;i++){
+          let max=0;
+          for(let j=0;j<blockSize;j++){const v=Math.abs(raw[i*blockSize+j]||0);if(v>max)max=v;}
+          peaks.push(parseFloat(max.toFixed(4)));
+        }
+        if(cancelled)return;
+        // Update tracks state so Waveform re-renders immediately
+        setTracks(prev=>prev.map(t=>t.id===track.id?{...t,peaks}:t));
+        // Save back to DB so we don't regenerate next time
+        sb.from('tracks').update({peaks}).eq('id',track.id);
+      }catch(e){console.warn('Peak gen failed:',e);}
+    })();
+    return()=>{cancelled=true;};
+  },[activeTrackId,tracks.length]);
+
   return(<>
     <style>{`*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}:root{--bg:#0a0a0b;--surf:#111113;--surf2:#16161a;--surf3:#1e1e24;--border:#24242c;--border2:#2e2e38;--amber:#e8a020;--aglow:rgba(232,160,32,0.08);--text:#f0ede8;--t2:#8a8780;--t3:#4a4945;--red:#e05050;--fh:'DM Serif Display',Georgia,serif;--fm:'DM Mono','SF Mono','Menlo',monospace;}input,textarea,select{font-size:16px!important;-webkit-text-size-adjust:100%;}html,body{background:var(--bg);color:var(--text);font-family:var(--fm);-webkit-font-smoothing:antialiased;}
     .ps-waveform-bar{position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px 8px;box-shadow:0 2px 20px rgba(0,0,0,.5);}
