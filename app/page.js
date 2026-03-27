@@ -169,7 +169,7 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount}){
   const [saving,setSaving]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const menuRef=useRef(null);
-  const tc=project.tracks?.length||0;
+  const tc=(project._pendingTracks||project.tracks)?.length||0;const isPending=!!project._pendingTracks;
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const date=new Date(project.updated_at||project.created_at);
   const dateStr=months[date.getMonth()]+' '+date.getDate()+', '+date.getFullYear();
@@ -336,7 +336,7 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount}){
         </div>
       </div>
       <div className="card-wave"><WaveformCanvas peaks={project.peaks}/></div>
-      <div className="card-meta" style={{position:'relative'}}>{unreadCount>0&&<span style={{position:'absolute',top:-8,right:0,background:'var(--amber)',color:'#000',borderRadius:99,fontSize:9,fontWeight:700,fontFamily:'var(--fm)',minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{unreadCount}</span>}<span>{tc} track{tc!==1?'s':''}</span><span>{dateStr}</span></div>
+      <div className="card-meta" style={{position:'relative'}}>{unreadCount>0&&<span style={{position:'absolute',top:-8,right:0,background:'var(--amber)',color:'#000',borderRadius:99,fontSize:9,fontWeight:700,fontFamily:'var(--fm)',minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{unreadCount}</span>}<span>{isPending?tc+' uploading…':tc+' track'+(tc!==1?'s':'')}</span><span>{dateStr}</span></div>
     </div>
   );
   if(confirmDelete)return(
@@ -353,9 +353,13 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount}){
   );
   return(
     <div className="card" style={{animationDelay:idx*60+'ms'}}
-      onClick={e=>{if(menuOpen){setMenuOpen(false);e.stopPropagation();return;}window.location.href='/player?project='+project.id;}}>
+      onClick={e=>{if(menuOpen){setMenuOpen(false);e.stopPropagation();return;}if(!isPending)window.location.href='/player?project='+project.id;}}>
       <div className="card-header" style={{gap:0,flexDirection:'column',alignItems:'stretch',padding:0}}>
-        <div className="card-art-full">
+        <div className="card-art-full" style={{position:'relative'}}>
+            {isPending&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.55)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:2,borderRadius:'inherit'}}>
+              <div style={{width:28,height:28,border:'3px solid var(--amber)',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite',marginBottom:8}}/>
+              <span style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--amber)',letterSpacing:'.06em',textTransform:'uppercase',fontWeight:600}}>Uploading…</span>
+            </div>}
           {project.image_url
             ? <img src={project.image_url} alt={project.title}/>
             : <div className="card-art-placeholder">{project.title?.[0]?.toUpperCase()||'♪'}</div>}
@@ -491,46 +495,67 @@ export default function Dashboard(){
     if(!projName||tracks.length===0||tracks.some(t=>!t.name.trim()))return;
     setCreating(true);
     try{
+      // Insert project first
       const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null,peaks:[],user_id:user.id}).select().single();
       if(projErr)throw projErr;
 
-      // Close modal + fire NC immediately
-      setShowModal(false);
-      const _ncId='up_'+Date.now();
-      // Register one NC entry per file
-      if(window.nc_startUpload){
-        tracks.forEach((t,i)=>window.nc_startUpload(_ncId+'_'+i,t.name||t.file.name,proj.id,projName,1));
-      }
-      setTimeout(()=>window.nc_openToUploads&&window.nc_openToUploads(),100);
+      // Add project to dashboard immediately with pending tracks (greyed out)
+      const pendingTracks=tracks.map((t,i)=>({id:'pending_'+i,title:t.name,position:i,_pending:true}));
+      setProjects(prev=>[{...proj,_pendingTracks:pendingTracks,tracks:pendingTracks},...prev]);
 
-      // Upload all files in PARALLEL
+      // Close modal and open NC uploads tab
+      setShowModal(false);
+      const _ncIds=tracks.map((_,i)=>'up_'+Date.now()+'_'+i);
+      if(window.nc_startUpload){
+        tracks.forEach((t,i)=>window.nc_startUpload(_ncIds[i],t.name||t.file.name,proj.id,projName,100));
+      }
+      setTimeout(()=>window.nc_openToUploads&&window.nc_openToUploads(),80);
+
+      // Upload all files in PARALLEL using XHR for real byte-level progress
+      function xhrUpload(file,url,ncId){
+        return new Promise((resolve,reject)=>{
+          const xhr=new XMLHttpRequest();
+          xhr.open('POST',url);
+          xhr.setRequestHeader('Content-Type',file.type||'audio/wav');
+          xhr.upload.onprogress=e=>{
+            if(e.lengthComputable&&window.nc_updateUpload){
+              window.nc_updateUpload(ncId,Math.round(e.loaded/e.total*100),100);
+            }
+          };
+          xhr.onload=()=>{
+            try{
+              const result=JSON.parse(xhr.responseText);
+              if(window.nc_updateUpload)window.nc_updateUpload(ncId,100,100);
+              if(window.nc_finishUpload)window.nc_finishUpload(ncId);
+              resolve(result);
+            }catch(e){reject(new Error('Bad response: '+xhr.responseText.substring(0,100)));}
+          };
+          xhr.onerror=()=>reject(new Error('Network error uploading '+file.name));
+          xhr.send(file);
+        });
+      }
+
       const uploadResults=await Promise.all(tracks.map(async (t,i)=>{
         const safeName=sanitizeFilename(t.file.name);
+        const url=UPLOAD_WORKER_URL+'?project='+proj.id+'&name='+encodeURIComponent(safeName);
         try{
-          const r=await fetch(UPLOAD_WORKER_URL+'?project='+proj.id+'&name='+encodeURIComponent(safeName),{
-            method:'POST',headers:{'Content-Type':t.file.type||'audio/wav'},body:t.file
-          });
-          const result=await r.json();
-          if(window.nc_updateUpload)window.nc_updateUpload(_ncId+'_'+i,1,1);
+          const result=await xhrUpload(t.file,url,_ncIds[i]);
           return result.url?{...t,url:result.url}:null;
         }catch(e){console.error('Upload failed:',t.name,e);return null;}
       }));
 
-      // Insert tracks
+      // Insert tracks into DB
       const toneLabels=['W+L','N+L','B+L','W+N','N+N','B+N','W+G','N+G','B+G'];
       for(let i=0;i<tracks.length;i++){
         const t=tracks[i];const res=uploadResults[i];if(!res)continue;
         await sb.from('tracks').insert({project_id:proj.id,title:t.name,audio_url:res.url,position:i,tone_setting:t.tone||4,tone_label:toneLabels[t.tone||4],duration:0});
       }
 
-      // Generate peaks
+      // Generate peaks in background
       if(uploadResults[0]?.url)makePeaksFromFile(tracks[0].file,p=>sb.from('projects').update({peaks:p}).eq('id',proj.id));
 
-      // Add to dashboard state immediately — no refresh needed
-      setProjects(prev=>[proj,...prev]);
+      // Replace pending project in state with real data
       loadProjects();
-
-      if(window.nc_finishUpload)tracks.forEach((_,i)=>window.nc_finishUpload(_ncId+'_'+i));
       setStatusMsg('');
     }catch(e){
       setStatusMsg('Error: '+e.message);
