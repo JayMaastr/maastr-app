@@ -356,15 +356,9 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount}){
       onClick={e=>{if(menuOpen){setMenuOpen(false);e.stopPropagation();return;}if(!isPending)window.location.href='/player?project='+project.id;}}>
       <div className="card-header" style={{gap:0,flexDirection:'column',alignItems:'stretch',padding:0}}>
         <div className="card-art-full" style={{position:'relative'}}>
-            {isPending&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.6)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:2,borderRadius:'inherit',padding:'0 24px'}}>
-              <span style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--amber)',letterSpacing:'.06em',textTransform:'uppercase',fontWeight:600,marginBottom:10}}>Uploading {project._trackCount||''} {(project._trackCount||1)===1?'track':'tracks'}…</span>
-              {(project._progress||[]).map((pct,i)=>(
-                <div key={i} style={{width:'100%',marginBottom:5}}>
-                  <div style={{height:4,borderRadius:2,background:'rgba(255,255,255,.15)',overflow:'hidden'}}>
-                    <div style={{height:'100%',borderRadius:2,background:pct>=100?'#4caf50':'var(--amber)',width:pct+'%',transition:'width .2s'}}/>
-                  </div>
-                </div>
-              ))}
+            {isPending&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.55)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:2,borderRadius:'inherit'}}>
+              <div style={{width:28,height:28,border:'3px solid var(--amber)',borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite',marginBottom:8}}/>
+              <span style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--amber)',letterSpacing:'.06em',textTransform:'uppercase',fontWeight:600}}>Uploading…</span>
             </div>}
           {project.image_url
             ? <img src={project.image_url} alt={project.title}/>
@@ -498,35 +492,35 @@ export default function Dashboard(){
   function setAllTones(idx){setTracks(prev=>prev.map(t=>({...t,tone:idx})));}
 
   async function createProject(){
-    if(!projName||tracks.length===0||tracks.some(t=>!t.name.trim()))return;
+    if(!projName||trackSnapshot.length===0||tracks.some(t=>!t.name.trim()))return;
     setCreating(true);
     try{
+      // Insert project first
+      const trackSnapshot=[...tracks];
       const {data:proj,error:projErr}=await sb.from('projects').insert({title:projName,artist:projArtist,image_url:coverArtUrl||null,peaks:[],user_id:user.id}).select().single();
       if(projErr)throw projErr;
 
-      // Add project to dashboard immediately with pending state + per-file progress array
-      const initProgress=tracks.map(()=>0);
-      setProjects(prev=>[{...proj,_pending:true,_progress:initProgress,_trackCount:tracks.length},...prev]);
+      // Add project to dashboard immediately with pending tracks (greyed out)
+      const pendingTracks=trackSnapshot.map((t,i)=>({id:'pending_'+i,title:t.name,position:i,_pending:true}));
+      setProjects(prev=>[{...proj,_pendingTracks:pendingTracks,tracks:pendingTracks},...prev]);
 
       // Close modal and open NC uploads tab
       setShowModal(false);
-      const _ncIds=tracks.map((_,i)=>'up_'+Date.now()+'_'+i);
+      const _ncIds=trackSnapshot.map((_,i)=>'up_'+Date.now()+'_'+i);
       if(window.nc_startUpload){
-        tracks.forEach((t,i)=>window.nc_startUpload(_ncIds[i],t.name||t.file.name,proj.id,projName,100));
+        trackSnapshot.forEach((t,i)=>window.nc_startUpload(_ncIds[i],t.name||t.file.name,proj.id,projName,100));
       }
       setTimeout(()=>window.nc_openToUploads&&window.nc_openToUploads(),80);
 
-      // Upload all files in PARALLEL using XHR for byte-level progress
-      function xhrUpload(file,url,ncId,onProgress){
+      // Upload all files in PARALLEL using XHR for real byte-level progress
+      function xhrUpload(file,url,ncId){
         return new Promise((resolve,reject)=>{
           const xhr=new XMLHttpRequest();
           xhr.open('POST',url);
           xhr.setRequestHeader('Content-Type',file.type||'audio/wav');
           xhr.upload.onprogress=e=>{
-            if(e.lengthComputable){
-              const pct=Math.round(e.loaded/e.total*100);
-              if(window.nc_updateUpload)window.nc_updateUpload(ncId,pct,100);
-              if(onProgress)onProgress(pct);
+            if(e.lengthComputable&&window.nc_updateUpload){
+              window.nc_updateUpload(ncId,Math.round(e.loaded/e.total*100),100);
             }
           };
           xhr.onload=()=>{
@@ -535,37 +529,33 @@ export default function Dashboard(){
               if(window.nc_updateUpload)window.nc_updateUpload(ncId,100,100);
               if(window.nc_finishUpload)window.nc_finishUpload(ncId);
               resolve(result);
-            }catch(e){reject(new Error('Bad response'));}
+            }catch(e){reject(new Error('Bad response: '+xhr.responseText.substring(0,100)));}
           };
-          xhr.onerror=()=>reject(new Error('Upload error: '+file.name));
+          xhr.onerror=()=>reject(new Error('Network error uploading '+file.name));
           xhr.send(file);
         });
       }
 
-      const uploadResults=await Promise.all(tracks.map(async (t,i)=>{
+      const uploadResults=await Promise.all(trackSnapshot.map(async (t,i)=>{
         const safeName=sanitizeFilename(t.file.name);
         const url=UPLOAD_WORKER_URL+'?project='+proj.id+'&name='+encodeURIComponent(safeName);
         try{
-          const result=await xhrUpload(t.file,url,_ncIds[i],(pct)=>{
-            // Update this file's progress in the project card
-            setProjects(prev=>prev.map(p=>p.id===proj.id?{...p,_progress:p._progress.map((v,idx)=>idx===i?pct:v)}:p));
-          });
+          const result=await xhrUpload(t.file,url,_ncIds[i]);
           return result.url?{...t,url:result.url}:null;
         }catch(e){console.error('Upload failed:',t.name,e);return null;}
       }));
 
       // Insert tracks into DB
       const toneLabels=['W+L','N+L','B+L','W+N','N+N','B+N','W+G','N+G','B+G'];
-      for(let i=0;i<tracks.length;i++){
-        const t=tracks[i];const res=uploadResults[i];if(!res)continue;
+      for(let i=0;i<trackSnapshot.length;i++){
+        const t=trackSnapshot[i];const res=uploadResults[i];if(!res)continue;
         await sb.from('tracks').insert({project_id:proj.id,title:t.name,audio_url:res.url,position:i,tone_setting:t.tone||4,tone_label:toneLabels[t.tone||4],duration:0});
       }
 
       // Generate peaks in background
       if(uploadResults[0]?.url)makePeaksFromFile(tracks[0].file,p=>sb.from('projects').update({peaks:p}).eq('id',proj.id));
 
-      // ALL DONE — remove pending state and refresh from DB
-      setProjects(prev=>prev.map(p=>p.id===proj.id?{...p,_pending:false,_progress:null}:p));
+      // Replace pending project in state with real data
       loadProjects();
       setStatusMsg('');
     }catch(e){
