@@ -558,7 +558,15 @@ export default function Dashboard(){
       }
 
       // Generate peaks in background
-      if(uploadResults[0]?.url)makePeaksFromFile(tracks[0].file,p=>sb.from('projects').update({peaks:p}).eq('id',proj.id));
+      // Generate peaks for every track and save to track rows
+      uploadResults.forEach((res, i) => {
+        if(!res?.url || !trackSnapshot[i]?.file) return;
+        makePeaksFromFile(trackSnapshot[i].file, peaks => {
+          sb.from('tracks').update({peaks}).eq('project_id', proj.id).eq('position', i);
+          // Also save first track peaks to project for dashboard card
+          if(i === 0) sb.from('projects').update({peaks}).eq('id', proj.id);
+        });
+      });
 
       // Replace pending project in state with real data
       loadProjects();
