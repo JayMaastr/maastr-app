@@ -1,0 +1,12 @@
+{
+  "name": "maastr-encoder",
+  "version": "1.0.0",
+  "description": "HLS encoding microservice for maastr.io",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
