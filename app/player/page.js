@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
 function fmt(s){if(!s||isNaN(s))return'0:00';return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');}
@@ -28,7 +28,7 @@ function getToneMemory(n){try{const v=localStorage.getItem('mt_'+n.toLowerCase()
 function setToneMemory(n,i){try{localStorage.setItem('mt_'+n.toLowerCase().replace(/\s+/g,'_'),i);}catch{}}
 ;
 async function computePeaks(file,n=400){try{const ab=await file.arrayBuffer();const ac=new(window.AudioContext||window.webkitAudioContext)();const buf=await ac.decodeAudioData(ab);ac.close();const raw=buf.getChannelData(0),bs=Math.floor(raw.length/n),peaks=[];for(let i=0;i<n;i++){let max=0;const s=i*bs;for(let j=0;j<bs;j++){const v=Math.abs(raw[s+j]||0);if(v>max)max=v;}peaks.push(Math.min(1,max));}const mx=Math.max(...peaks)||1;return peaks.map(p=>Math.max(0.04,(p/mx)*0.95));}catch(e){return[];}}
-function Waveform({peaks,progress,notes,duration,onSeek}){const canvasRef=useRef(null),rafRef=useRef(null),progressRef=useRef(progress),roRef=useRef(null);useEffect(()=>{
+function Waveform({peaks,progress,notes,duration,onSeek}){const canvasRef=useRef(null),rafRef=useRef(null),progressRef=useRef(progress),roRef=useRef(null),shimRafRef=useRef(null);useEffect(()=>{
     const canvas=canvasRef.current;
     if(!canvas)return;
     // On resize: just mark that we need a redraw — don't touch the RAF loop
@@ -44,21 +44,43 @@ function Waveform({peaks,progress,notes,duration,onSeek}){const canvasRef=useRef
     roRef.current=ro;
     return ()=>ro.disconnect();
   },[]);
+  // Shimmer animation — runs its own RAF loop when no peaks loaded yet
+  useEffect(()=>{
+    if(peaks&&peaks.length>4){
+      if(shimRafRef.current)cancelAnimationFrame(shimRafRef.current);
+      shimRafRef.current=null;
+      return;
+    }
+    const canvas=canvasRef.current;
+    if(!canvas)return;
+    function drawShimmer(){
+      const dpr=window.devicePixelRatio||1;
+      const W=canvas.getBoundingClientRect().width||canvas.parentElement?.clientWidth||600;
+      const H=72;
+      canvas.width=Math.round(W*dpr);
+      canvas.height=Math.round(H*dpr);
+      canvas.style.width='100%';
+      canvas.style.height=H+'px';
+      const ctx=canvas.getContext('2d');
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.scale(dpr,dpr);
+      const n=Math.floor(W/3);
+      const t=Date.now()/900;
+      for(let i=0;i<n;i++){
+        const wave=0.15+0.1*Math.sin(i*0.2+t)+0.05*Math.sin(i*0.08-t*1.4);
+        const h=Math.max(3,wave*(H/2-3));
+        const alpha=0.1+0.07*Math.sin(i*0.16+t*1.6);
+        ctx.fillStyle='rgba(232,160,32,'+alpha.toFixed(3)+')';
+        ctx.fillRect(i*3,H/2-h,1,h*2);
+      }
+      shimRafRef.current=requestAnimationFrame(drawShimmer);
+    }
+    drawShimmer();
+    return()=>{if(shimRafRef.current)cancelAnimationFrame(shimRafRef.current);};
+  },[peaks]);
   useEffect(()=>{progressRef.current=progress;},[peaks,progress]);const stablePeaks=useRef(peaks&&peaks.length>4?peaks:null);if(peaks&&peaks.length>4)stablePeaks.current=peaks;useEffect(()=>{const canvas=canvasRef.current;if(!canvas)return;const dpr=window.devicePixelRatio||1,rect=canvas.getBoundingClientRect(),W=rect.width||canvas.parentElement?.clientWidth||600,H=72;canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);canvas.style.width='100%';canvas.style.height=H+'px';const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);const data=stablePeaks.current;
-        // Show shimmer loading animation when no real peaks yet
-        if(!data){
-          ctx.clearRect(0,0,W,H);
-          const numShim=Math.floor(W/3);
-          const t=Date.now()/800;
-          for(let i=0;i<numShim;i++){
-            const wave=0.18+0.12*Math.sin(i*0.18+t)+0.06*Math.sin(i*0.07-t*1.3);
-            const h=Math.max(4,wave*(H/2-4));
-            const alpha=0.12+0.08*Math.sin(i*0.15+t*1.5);
-            ctx.fillStyle='rgba(232,160,32,'+alpha.toFixed(3)+')';
-            ctx.fillRect(i*3,H/2-h,1,h*2);
-          }
-          return;
-        }
+        // No real peaks yet — shimmer useEffect handles the animation
+        if(!data){ctx.clearRect(0,0,W,H);return;}
         const BAR=1,GAP=0.5,STEP=BAR+GAP,numBars=Math.floor(W/STEP),cy=H/2;const heights=new Float32Array(numBars);for(let i=0;i<numBars;i++){const pi=Math.floor(i/numBars*data.length);heights[i]=Math.max(2,data[Math.min(pi,data.length-1)]*(cy-5));}const nc=document.createElement('canvas');nc.width=Math.round(W);nc.height=Math.round(H);const nctx=nc.getContext('2d');if(notes&&notes.length&&duration>0){notes.forEach(n=>{if(n.timestamp_sec==null||n.timestamp_sec>duration)return;const x=(n.timestamp_sec/duration)*W;nctx.save();nctx.strokeStyle='rgba(255,255,255,0.25)';nctx.lineWidth=1;nctx.setLineDash([2,3]);nctx.beginPath();nctx.moveTo(x,3);nctx.lineTo(x,H-3);nctx.stroke();nctx.restore();nctx.fillStyle='#e8a020';nctx.beginPath();nctx.arc(x,3,3,0,Math.PI*2);nctx.fill();});}let lastPlayX=-999;function draw(){const prog=Math.max(0,Math.min(1,progressRef.current||0)),playX=prog*W;if(Math.abs(playX-lastPlayX)>=.5){lastPlayX=playX;const cutBar=Math.floor(prog*numBars);ctx.clearRect(0,0,W,H);
         // Draw bars with gradient and reflection
         for(let i=0;i<numBars;i++){
