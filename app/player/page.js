@@ -213,7 +213,7 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
         </div>
       </div>
       {revSwitcherOpen&&revisions.length>1&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
-      <div className="td-wave-wrap"><Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
+      <div className="td-wave-wrap">{(!track?.peaks||track.peaks.length<4)?(<div style={{height:'72px',display:'flex',alignItems:'center',justifyContent:'center',gap:'10px',opacity:0.6}}><div style={{width:'8px',height:'8px',borderRadius:'50%',background:'#e8a020',animation:'pulse 1.4s ease-in-out infinite'}}></div><span style={{fontSize:'13px',color:'#e8a020',fontFamily:'DM Mono,monospace',letterSpacing:'0.05em'}}>Processing audio… won't be long</span></div>):(<Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/>)}</div><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
       <div className="td-notes-scroll">
         {notes.length>0?(<><div className="td-notes-label">NOTES{displayRev&&<span className="td-notes-rev"> — {displayRev.label||'v1'}</span>}</div>{notes.map(n=>(<div key={n.id} className="td-note-item"><div className="td-note-meta"><span className="td-note-author">{n.author_name||'You'}</span>{n.timestamp_sec!=null&&(<button className="td-note-pill" onClick={()=>onSeekToTime(n.timestamp_sec)}><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>{n.timestamp_label||fmt(n.timestamp_sec)}</button>)}</div><div className="td-note-body">{n.body}</div><span className="td-note-date">{new Date(n.created_at).toLocaleDateString()}</span></div>))}</>):(<div className="td-notes-empty">No notes yet — add the first one below</div>)}
       </div>
@@ -257,7 +257,24 @@ function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRena
     {revDeleteOpen&&(<div className="rev-action-panel" onClick={e=>e.stopPropagation()}>{deleteRevStep===1&&deleteRevTarget?(<div className="rev-del-confirm"><div className="rev-del-confirm-title">Delete {deleteRevTarget.label||('v'+(deleteRevTarget.version_number||'?'))}?</div><div className="rev-del-confirm-sub">Permanently deletes this revision and all its notes.</div><div className="rev-del-actions"><button className="btn-ghost-sm" onClick={()=>{setDeleteRevStep(0);setDeleteRevTarget(null);}}>Cancel</button><button className="btn-delete-sm" onClick={()=>{onDeleteRevision(deleteRevTarget,track);setRevDeleteOpen(false);setDeleteRevTarget(null);setDeleteRevStep(0);}}>Delete Forever</button></div></div>):(<><div className="rev-action-label">Which revision to delete?</div>{revisions.map(rev=>(<button key={rev.id} className="rev-del-row" onClick={()=>{setDeleteRevTarget(rev);setDeleteRevStep(1);}}><span className="rev-del-row-label">{rev.label||('v'+(rev.version_number||'?'))}</span>{rev.tone_label&&<span className="rev-del-row-tone">{rev.tone_label}</span>}<span className="rev-del-row-date">{fmtDate(rev.created_at)}</span>{rev.is_active&&<span className="rev-del-row-active">current</span>}</button>))}<button className="btn-ghost-sm" style={{width:'100%',marginTop:8}} onClick={()=>{setRevDeleteOpen(false);setDeleteRevTarget(null);}}>Cancel</button></>)}</div>)}
   </div>);}
 export default function Player(){
-  const [user,setUser]=useState(null);const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);
+  const [user,setUser]=useState(null);const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);
+  // Poll for peaks if any track is still processing
+  useEffect(()=>{
+    const hasMissing = tracks.some(t=>!t.peaks||t.peaks.length<4);
+    if(!hasMissing||tracks.length===0) return;
+    const id=setInterval(async()=>{
+      const {data}=await sb.from('tracks').select('id,peaks,duration').in('id',tracks.map(t=>t.id));
+      if(!data) return;
+      const allReady=data.every(t=>t.peaks&&t.peaks.length>=4);
+      setTracks(prev=>prev.map(t=>{
+        const fresh=data.find(d=>d.id===t.id);
+        return fresh?{...t,peaks:fresh.peaks,duration:fresh.duration}:t;
+      }));
+      if(allReady) clearInterval(id);
+    },3000);
+    return ()=>clearInterval(id);
+  },[tracks]);
+const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);
   const [pendingSeek,setPendingSeek]=useState(null);const audioRef=useRef(null);
   const [detailTrack,setDetailTrack]=useState(null);
   const [showRevModal,setShowRevModal]=useState(false);const [revFiles,setRevFiles]=useState([]);const [revDragging,setRevDragging]=useState(false);const [revUploading,setRevUploading]=useState(false);const [revStatus,setRevStatus]=useState('');
@@ -434,7 +451,7 @@ const [showInvite,setShowInvite]=useState(false);
     .tgm-tip-label{font-size:11px;color:var(--amber);font-weight:500;}.tgm-tip-desc{font-size:10px;color:var(--t2);}
     .tgm-set-all{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;}.tgm-set-all:hover{border-color:var(--amber);color:var(--amber);}
     .btn-amber-sm{font-family:var(--fm);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.btn-amber-sm:disabled{opacity:.35;pointer-events:none;}
-    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar,.td-modal-bar{padding-left:24px;padding-right:24px;}}`}</style>
+    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar,.td-modal-bar{padding-left:24px;padding-right:24px;}}`}@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)}}</style>
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><a href="/" className="back">← Dashboard</a></div>
 
       <div style={{position:'relative',marginLeft:'auto',flexShrink:0}}>
