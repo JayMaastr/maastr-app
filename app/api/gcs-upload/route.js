@@ -48,7 +48,7 @@ export async function POST(request) {
     const canonicalRequest = [
       'PUT',
       `/${BUCKET}/${objectKey}`,
-      `X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=${encodeURIComponent(credential)}&X-Goog-Date=${dateStamp}&X-Goog-Expires=${expires}&X-Goog-SignedHeaders=${signedHeaders}`,
+      `X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=${encodeURIComponent(credential)}&X-Goog-Date=${dateStamp}&X-Goog-Expires=${expires}&X-Goog-SignedHeaders=${encodeURIComponent(signedHeaders)}`,
       headers,
       signedHeaders,
       'UNSIGNED-PAYLOAD'
