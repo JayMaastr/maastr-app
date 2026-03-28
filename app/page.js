@@ -496,10 +496,10 @@ export default function Dashboard(){
       setTimeout(()=>window.nc_openToUploads&&window.nc_openToUploads(),80);
 
       // Upload all files in PARALLEL using XHR for real byte-level progress
-      function xhrUpload(file,url,ncId){
+      function xhrUpload(file,url,ncId,usePut){
         return new Promise((resolve,reject)=>{
           const xhr=new XMLHttpRequest();
-          xhr.open('POST',url);
+          xhr.open(usePut?'PUT':'POST',url);
           xhr.setRequestHeader('Content-Type',file.type||'audio/wav');
           xhr.upload.onprogress=e=>{
             if(e.lengthComputable&&window.nc_updateUpload){
@@ -521,10 +521,14 @@ export default function Dashboard(){
 
       const uploadResults=await Promise.all(trackSnapshot.map(async (t,i)=>{
         const safeName=sanitizeFilename(t.file.name);
-        const url=UPLOAD_WORKER_URL+'?project='+proj.id+'&name='+encodeURIComponent(safeName);
+        // Get GCS signed upload URL
+        const gcsRes=await fetch('/api/gcs-upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId:proj.id,fileName:safeName,contentType:t.file.type||'audio/wav'})});
+        const gcsData=await gcsRes.json();
+        if(!gcsData.uploadUrl) return null;
         try{
-          const result=await xhrUpload(t.file,url,_ncIds[i]);
-          return result.url?{...t,url:result.url}:null;
+          const result=await xhrUpload(t.file,gcsData.uploadUrl,_ncIds[i],true);
+          const url=gcsData.publicUrl;
+          return url?{...t,url}:null;
         }catch(e){console.error('Upload failed:',t.name,e);return null;}
       }));
 
