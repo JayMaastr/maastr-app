@@ -317,7 +317,7 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount,onRefresh}){
           <button className="edit-save" disabled={!editTitle.trim()||saving} onClick={saveEdit}>{saving?'Saving…':'Save'}</button>
         </div>
       </div>
-      <div className="card-wave">{(!project.peaks||project.peaks.length<4)?(<div style={{height:'48px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}><div style={{width:'6px',height:'6px',borderRadius:'50%',background:'#e8a020',animation:'pulse 1.4s ease-in-out infinite'}}></div><span style={{fontSize:'11px',color:'rgba(232,160,32,0.7)',fontFamily:'DM Mono,monospace'}}>Processing…</span></div>):(<WaveformCanvas peaks={project.peaks}/>)}</div>
+      <div className="card-wave"><WaveformCanvas peaks={project.peaks}/></div>
       <div className="card-meta" style={{position:'relative'}}>{unreadCount>0&&<span style={{position:'absolute',top:-8,right:0,background:'var(--amber)',color:'#000',borderRadius:99,fontSize:9,fontWeight:700,fontFamily:'var(--fm)',minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{unreadCount}</span>}<span>{isPending?tc+' uploading…':tc+' track'+(tc!==1?'s':'')}</span><span>{dateStr}</span></div>
     </div>
   );
@@ -415,6 +415,21 @@ export default function Dashboard(){
     if(!error)setProjects(data||[]);
     setLoading(false);
   }
+  useEffect(()=>{
+    const pending=projects.filter(p=>(!p.peaks||p.peaks.length<4)&&projects.length>0);
+    if(pending.length===0) return;
+    const id=setInterval(async()=>{
+      const ids=pending.map(p=>p.id);
+      const {data}=await sb.from('projects').select('id,peaks').in('id',ids);
+      if(!data) return;
+      setProjects(prev=>prev.map(p=>{
+        const fresh=data.find(d=>d.id===p.id);
+        return (fresh&&fresh.peaks&&fresh.peaks.length>=4)?{...p,peaks:fresh.peaks}:p;
+      }));
+    },3000);
+    return ()=>clearInterval(id);
+  },[projects.length]);
+
 useEffect(()=>{
   if(!projects.length) return;
   if(projects.every(p=>p.peaks&&p.peaks.length>=4)) return;
