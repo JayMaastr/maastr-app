@@ -31,10 +31,13 @@ async function computePeaks(file,n=400){try{const ab=await file.arrayBuffer();co
 function Waveform({peaks, progress, notes, duration, onSeek}) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
-  // Update progress ref synchronously every render — no effect needed
   const progressRef = useRef(progress);
-  progressRef.current = progress;
+  const roRef = useRef(null);
 
+  // Keep progress ref current without re-running full draw
+  useEffect(() => { progressRef.current = progress; }, [progress]);
+
+  // Main draw effect — runs on mount and when peaks change
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -42,48 +45,38 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
 
     function draw() {
       if (!running) return;
-
       const dpr = window.devicePixelRatio || 1;
-      const container = canvas.parentElement;
-      const W = container ? container.clientWidth : 600;
+      const W = canvas.parentElement ? canvas.parentElement.clientWidth : 600;
       const H = 72;
-
-      // Resize canvas if needed (handles window resize + DPR)
-      const targetW = Math.round(W * dpr);
-      const targetH = Math.round(H * dpr);
-      if (canvas.width !== targetW || canvas.height !== targetH) {
-        canvas.width = targetW;
-        canvas.height = targetH;
+      if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
         canvas.style.width = '100%';
         canvas.style.height = H + 'px';
       }
-
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
       ctx.scale(dpr, dpr);
 
-      const hasRealPeaks = peaks && peaks.length > 4;
-
-      if (!hasRealPeaks) {
-      // Show "Processing..." state — clear canvas and draw centered text
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.scale(dpr, dpr);
-      // Animated dot
-      const t = Date.now() / 500;
-      const dotAlpha = 0.4 + 0.6 * Math.abs(Math.sin(t));
-      ctx.fillStyle = 'rgba(232,160,32,' + dotAlpha + ')';
+      if (!peaks || peaks.length < 4) {
+      // No peaks yet — show animated processing state
+      ctx.clearRect(0, 0, W, H);
+      const t = Date.now() / 600;
+      const pulse = 0.35 + 0.35 * Math.sin(t * Math.PI * 2);
+      const dotR = 4;
+      const textX = W / 2 + dotR * 2 + 4;
+      ctx.font = '500 12px DM Mono, monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(232,160,32,' + (0.4 + pulse * 0.4) + ')';
+      const label = 'Processing audio… won’t be long';
+      const tw = ctx.measureText(label).width;
+      const startX = (W - tw - dotR * 2 - 8) / 2;
       ctx.beginPath();
-      ctx.arc(W / 2 - 80, H / 2, 4, 0, Math.PI * 2);
+      ctx.arc(startX + dotR, H / 2, dotR * (0.7 + pulse * 0.5), 0, Math.PI * 2);
       ctx.fill();
-      // Text
-      ctx.font = '12px "DM Mono", monospace';
-      ctx.fillStyle = 'rgba(232,160,32,0.7)';
-      ctx.textAlign = 'center';
-      ctx.fillText('Processing audio… won’t be long', W / 2, H / 2 + 4);
-      ctx.restore();
-      rafRef.current = requestAnimationFrame(draw);
+      ctx.fillStyle = 'rgba(232,160,32,' + (0.5 + pulse * 0.3) + ')';
+      ctx.fillText(label, startX + dotR * 2 + 6, H / 2);
       return;
     }
 
@@ -93,69 +86,83 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
       const cutBar = Math.floor(prog * numBars);
       const cy = H / 2;
 
+      // Pre-compute heights
+      const heights = new Float32Array(numBars);
       for (let i = 0; i < numBars; i++) {
         const pi = Math.min(Math.floor(i / numBars * peaks.length), peaks.length - 1);
-        const h = Math.max(2, peaks[pi] * (cy - 4));
+        heights[i] = Math.max(2, peaks[pi] * (cy - 4));
+      }
+
+      // Draw bars
+      for (let i = 0; i < numBars; i++) {
+        const h = heights[i];
         const played = i < cutBar;
         const alpha = played ? 1 : 0.3;
-
-        // Bar gradient
+        // Upper bar gradient
         const grad = ctx.createLinearGradient(0, cy - h, 0, cy);
-        grad.addColorStop(0, 'rgba(232,160,32,' + alpha + ')');
-        grad.addColorStop(1, 'rgba(200,130,20,' + alpha + ')');
+        grad.addColorStop(0, played ? 'rgba(232,160,32,'+alpha+')' : 'rgba(200,140,30,'+alpha+')');
+        grad.addColorStop(1, played ? 'rgba(200,130,20,'+alpha+')' : 'rgba(180,120,15,'+alpha+')');
         ctx.fillStyle = grad;
         ctx.fillRect(i * STEP, cy - h, BAR, h);
-
         // Reflection
-        const rg = ctx.createLinearGradient(0, cy, 0, cy + h * 0.6);
-        rg.addColorStop(0, 'rgba(232,160,32,' + (alpha * 0.4) + ')');
-        rg.addColorStop(1, 'rgba(232,160,32,0)');
-        ctx.fillStyle = rg;
+        const rGrad = ctx.createLinearGradient(0, cy, 0, cy + h * 0.6);
+        rGrad.addColorStop(0, 'rgba(232,160,32,'+(alpha*0.4)+')');
+        rGrad.addColorStop(1, 'rgba(232,160,32,0)');
+        ctx.fillStyle = rGrad;
         ctx.fillRect(i * STEP, cy, BAR, h * 0.6);
       }
 
       // Playhead
       if (prog > 0.001) {
         const px = Math.round(prog * W);
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.fillRect(px, 0, 1, H);
+        // Dot
         ctx.beginPath();
-        ctx.arc(px, 5, 4, 0, Math.PI * 2);
+        ctx.arc(px, 4, 4, 0, Math.PI * 2);
         ctx.fillStyle = '#e8a020';
         ctx.fill();
       }
 
+      // Time stamps
+      ctx.font = '11px DM Mono, monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillText(fmt(prog * duration), 4, H - 4);
+      ctx.textAlign = 'right';
+      ctx.fillText(fmt(duration), W - 4, H - 4);
+      ctx.textAlign = 'left';
+
       // Note markers
-      if (notes && notes.length && duration > 0) {
-        for (const note of notes.filter(n => !n.resolved)) {
-          if (!note.timestamp_sec) continue;
+      if (notes && notes.length) {
+        const activeNotes = notes.filter(n => !n.resolved);
+        for (const note of activeNotes) {
+          if (!note.timestamp_sec || !duration) continue;
           const nx = (note.timestamp_sec / duration) * W;
           ctx.fillStyle = '#e8a020';
           ctx.fillRect(nx - 1, 0, 2, H);
+          ctx.beginPath();
+          ctx.arc(nx, H - 8, 3, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
 
-      // Time labels
-      if (duration > 0) {
-        ctx.font = '11px "DM Mono", monospace';
-        ctx.fillStyle = 'rgba(255,255,255,0.4)';
-        ctx.fillText(fmt(prog * duration), 4, H - 4);
-        ctx.textAlign = 'right';
-        ctx.fillText(fmt(duration), W - 4, H - 4);
-        ctx.textAlign = 'left';
-      }
-
-      ctx.restore();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       rafRef.current = requestAnimationFrame(draw);
     }
 
     draw();
 
+    // ResizeObserver — just let the draw loop handle resize naturally
+    const ro = new ResizeObserver(() => {}); // canvas checks size on every frame
+    if (canvas.parentElement) ro.observe(canvas.parentElement);
+    roRef.current = ro;
+
     return () => {
       running = false;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      ro.disconnect();
     };
-  }, [peaks, notes, duration]);
+  }, [peaks, notes, duration]); // Re-run when peaks/notes/duration change
 
   function handleClick(e) {
     if (!onSeek || !duration) return;
@@ -164,7 +171,7 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
   }
 
   return (
-    <div style={{cursor:'pointer',width:'100%',position:'relative'}} onClick={handleClick}>
+    <div className="td-wave-wrap" onClick={handleClick} style={{cursor:'pointer',width:'100%',position:'relative'}}>
       <canvas ref={canvasRef} style={{display:'block',width:'100%',height:'72px'}}/>
     </div>
   );
@@ -222,7 +229,7 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
         </div>
       </div>
       {revSwitcherOpen&&revisions.length>1&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
-      <div className="td-wave-wrap"><Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/>"td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
+      <div className="td-wave-wrap"><Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
       <div className="td-notes-scroll">
         {notes.length>0?(<><div className="td-notes-label">NOTES{displayRev&&<span className="td-notes-rev"> — {displayRev.label||'v1'}</span>}</div>{notes.map(n=>(<div key={n.id} className="td-note-item"><div className="td-note-meta"><span className="td-note-author">{n.author_name||'You'}</span>{n.timestamp_sec!=null&&(<button className="td-note-pill" onClick={()=>onSeekToTime(n.timestamp_sec)}><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>{n.timestamp_label||fmt(n.timestamp_sec)}</button>)}</div><div className="td-note-body">{n.body}</div><span className="td-note-date">{new Date(n.created_at).toLocaleDateString()}</span></div>))}</>):(<div className="td-notes-empty">No notes yet — add the first one below</div>)}
       </div>
@@ -267,36 +274,23 @@ function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRena
   </div>);}
 export default function Player(){
   const [user,setUser]=useState(null);const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);
-useEffect(()=>{
-  if(tracks.length===0) return;
-  if(tracks.every(t=>t.peaks&&t.peaks.length>=4)) return;
-  const timer=setInterval(async()=>{
-    const {data}=await sb.from('tracks').select('id,peaks,duration').in('id',tracks.map(t=>t.id));
-    if(!data) return;
-    if(data.every(d=>d.peaks&&d.peaks.length>=4)){
-      setTracks(prev=>prev.map(t=>{const f=data.find(d=>d.id===t.id);return f?{...t,peaks:f.peaks,duration:f.duration}:t;}));
-      clearInterval(timer);
-    }
-  },3000);
-  return ()=>clearInterval(timer);
-},[tracks.map(t=>t.id).join(','),tracks.every(t=>t.peaks&&t.peaks.length>=4)]);
-
-  // Poll for peaks if any track is still processing
-  useEffect(()=>{
-    const hasMissing = tracks.some(t=>!t.peaks||t.peaks.length<4);
-    if(!hasMissing||tracks.length===0) return;
-    const id=setInterval(async()=>{
-      const {data}=await sb.from('tracks').select('id,peaks,duration').in('id',tracks.map(t=>t.id));
-      if(!data) return;
-      const allReady=data.every(t=>t.peaks&&t.peaks.length>=4);
-      setTracks(prev=>prev.map(t=>{
-        const fresh=data.find(d=>d.id===t.id);
-        return fresh?{...t,peaks:fresh.peaks,duration:fresh.duration}:t;
+  // Poll every 3s if any track still has no peaks — auto-updates waveform when ready
+  useEffect(() => {
+    if (tracks.length === 0) return;
+    if (tracks.every(t => t.peaks && t.peaks.length >= 4)) return;
+    const timer = setInterval(async () => {
+      const { data } = await sb.from('tracks')
+        .select('id,peaks,duration')
+        .in('id', tracks.map(t => t.id));
+      if (!data) return;
+      setTracks(prev => prev.map(t => {
+        const fresh = data.find(d => d.id === t.id);
+        return fresh ? { ...t, peaks: fresh.peaks, duration: fresh.duration } : t;
       }));
-      if(allReady) clearInterval(id);
-    },3000);
-    return ()=>clearInterval(id);
-  },[tracks]);
+      if (data.every(t => t.peaks && t.peaks.length >= 4)) clearInterval(timer);
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [tracks.length]);
 const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);
   const [pendingSeek,setPendingSeek]=useState(null);const audioRef=useRef(null);
   const [detailTrack,setDetailTrack]=useState(null);
@@ -474,7 +468,7 @@ const [showInvite,setShowInvite]=useState(false);
     .tgm-tip-label{font-size:11px;color:var(--amber);font-weight:500;}.tgm-tip-desc{font-size:10px;color:var(--t2);}
     .tgm-set-all{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;}.tgm-set-all:hover{border-color:var(--amber);color:var(--amber);}
     .btn-amber-sm{font-family:var(--fm);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.btn-amber-sm:disabled{opacity:.35;pointer-events:none;}
-    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar,.td-modal-bar{padding-left:24px;padding-right:24px;}}`}@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)}}</style>
+    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar,.td-modal-bar{padding-left:24px;padding-right:24px;}}`}</style>
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><a href="/" className="back">← Dashboard</a></div>
 
       <div style={{position:'relative',marginLeft:'auto',flexShrink:0}}>
