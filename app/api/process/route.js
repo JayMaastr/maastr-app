@@ -90,6 +90,14 @@ export async function POST(request) {
     // Save peaks + duration to Supabase
     const sb = createClient(SB_URL, SB_SERVICE_KEY);
     const { error } = await sb.from('tracks').update({ peaks, duration }).eq('id', trackId);
+    // Also update project.peaks for card thumbnail (only if project has no peaks yet)
+    if (projectId) {
+      const { data: proj } = await sb.from('projects').select('peaks').eq('id', projectId).single();
+      if (!proj?.peaks || proj.peaks.length === 0) {
+        await sb.from('projects').update({ peaks }).eq('id', projectId);
+      }
+    }
+
     if (error) throw new Error('DB save failed: ' + error.message);
 
     // Fire encoder in background (separate service, can be async)
