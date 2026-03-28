@@ -70,6 +70,7 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
       ctx.beginPath();
       ctx.arc(W / 2 - 132, H / 2, 3 + pulse * 2, 0, Math.PI * 2);
       ctx.fill();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       rafRef.current = requestAnimationFrame(draw);
       return;
     }
