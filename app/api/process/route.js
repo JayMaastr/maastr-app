@@ -1,120 +1,78 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const SB_URL = 'https://btgednpwlkimgjwcopru.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0Z2VkbnB3bGtpbWdqd2NvcHJ1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDIwOTA3MSwiZXhwIjoyMDg5Nzg1MDcxfQ.n3tmGubf7IO_1SX1_sd7cgjcTvHVbJd67hBMfSJUBaA';
+const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://btgednpwlkimgjwcopru.supabase.co';
+const SB_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0Z2VkbnB3bGtpbWdqd2NvcHJ1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDIwOTA3MSwiZXhwIjoyMDg5Nzg1MDcxfQ.n3tmGubf7IO_1SX1_sd7cgjcTvHVbJd67hBMfSJUBaA';
 const ENCODER_URL = process.env.ENCODER_URL;
 const ENCODE_SECRET = process.env.ENCODE_SECRET || '';
 const NUM_PEAKS = 800;
 
-const sb = createClient(SB_URL, SB_KEY);
+export const maxDuration = 60; // Vercel max function duration in seconds
 
-// Read WAV header only (first 512 bytes) to get format info
-async function getWavFormat(audioUrl) {
-  const r = await fetch(audioUrl, { headers: { Range: 'bytes=0-511' } });
-  if (!r.ok) throw new Error('WAV header fetch failed: ' + r.status);
-  const buf = await r.arrayBuffer();
-  const view = new DataView(buf);
-  const numChannels = view.getUint16(22, true);
-  const bitsPerSample = view.getUint16(34, true);
-  const bytesPerSample = bitsPerSample / 8;
-  // Find data chunk
-  let offset = 12, dataOffset = -1, dataLength = 0;
-  while (offset < buf.byteLength - 8) {
-    const id = String.fromCharCode(view.getUint8(offset),view.getUint8(offset+1),view.getUint8(offset+2),view.getUint8(offset+3));
-    const sz = view.getUint32(offset + 4, true);
-    if (id === 'data') { dataOffset = offset + 8; dataLength = sz; break; }
-    if (sz === 0 || sz > 1e9) break;
-    offset += 8 + sz + (sz & 1);
-  }
-  return { numChannels, bitsPerSample, bytesPerSample, dataOffset, dataLength };
-}
-
-// Get total file size via HEAD
-async function getFileSize(audioUrl) {
-  const r = await fetch(audioUrl, { method: 'HEAD' });
-  const cl = r.headers.get('content-length');
-  return cl ? parseInt(cl) : 0;
-}
-
-// Extract a single peak value from a small chunk
-function peakFromChunk(buf, bitsPerSample) {
-  const view = new DataView(buf);
-  const bytesPerSample = bitsPerSample / 8;
-  let max = 0;
-  for (let i = 0; i + bytesPerSample <= buf.byteLength; i += bytesPerSample) {
-    let val = 0;
-    if (bitsPerSample === 16) val = Math.abs(view.getInt16(i, true)) / 32768;
-    else if (bitsPerSample === 24) {
-      const b0=view.getUint8(i),b1=view.getUint8(i+1),b2=view.getUint8(i+2);
-      let s=b0|(b1<<8)|(b2<<16); if(s>=0x800000)s-=0x1000000;
-      val = Math.abs(s) / 8388608;
-    } else if (bitsPerSample === 32) val = Math.abs(view.getInt32(i, true)) / 2147483648;
-    if (val > max) max = val;
-  }
-  return parseFloat(max.toFixed(4));
-}
-
-async function runPipeline(trackId, projectId, audioUrl) {
-  console.log('[process] start track', trackId);
-
-  // 1. Get file size and WAV format from header only
-  const [fileSize, fmt] = await Promise.all([
-    getFileSize(audioUrl),
-    getWavFormat(audioUrl)
+async function extractPeaks(audioUrl) {
+  // Get file size + read 4KB header to find fmt/data chunks
+  const [headR, hdrR] = await Promise.all([
+    fetch(audioUrl, { method: 'HEAD' }),
+    fetch(audioUrl, { headers: { Range: 'bytes=0-4095' } })
   ]);
-  console.log('[process] fileSize:', fileSize, 'fmt:', JSON.stringify(fmt));
+  const fileSize = parseInt(headR.headers.get('content-length') || '0');
+  if (!fileSize) throw new Error('Could not get file size');
 
-  if (fmt.dataOffset === -1 || fmt.dataLength === 0 || fileSize === 0) {
-    throw new Error('Could not parse WAV format');
-  }
+  const buf = await hdrR.arrayBuffer();
+  const v = new DataView(buf);
 
-  const frameSize = fmt.bytesPerSample * fmt.numChannels;
-  const totalFrames = Math.floor(fmt.dataLength / frameSize);
-  // Bytes to sample per peak (one frame = one sample point)
-  const samplesPerPeak = Math.max(1, Math.floor(totalFrames / NUM_PEAKS));
-  const chunkSize = frameSize * Math.min(samplesPerPeak, 512); // max 512 frames per fetch
-
-  // 2. Fetch NUM_PEAKS evenly-spaced chunks via parallel range requests (batched)
-  const peaks = new Array(NUM_PEAKS).fill(0);
-  const BATCH = 20; // parallel requests per batch
-
-  for (let batch = 0; batch < NUM_PEAKS; batch += BATCH) {
-    const end = Math.min(batch + BATCH, NUM_PEAKS);
-    const fetches = [];
-    for (let i = batch; i < end; i++) {
-      const byteOffset = fmt.dataOffset + i * samplesPerPeak * frameSize;
-      const byteEnd = Math.min(byteOffset + chunkSize - 1, fileSize - 1);
-      if (byteOffset >= fileSize) { peaks[i] = 0; continue; }
-      fetches.push(
-        fetch(audioUrl, { headers: { Range: `bytes=${byteOffset}-${byteEnd}` } })
-          .then(r => r.arrayBuffer())
-          .then(buf => { peaks[i] = peakFromChunk(buf, fmt.bitsPerSample); })
-          .catch(() => { peaks[i] = 0; })
-      );
+  // Walk RIFF chunks to find fmt and data
+  let off = 12, fmt = {}, dataOffset = -1, dataLength = 0;
+  while (off + 8 <= buf.byteLength) {
+    const id = String.fromCharCode(v.getUint8(off), v.getUint8(off+1), v.getUint8(off+2), v.getUint8(off+3));
+    const sz = v.getUint32(off + 4, true);
+    if (id === 'fmt ') {
+      fmt.ch  = v.getUint16(off + 10, true);
+      fmt.sr  = v.getUint32(off + 12, true);
+      fmt.bps = v.getUint16(off + 22, true);
     }
-    await Promise.all(fetches);
+    if (id === 'data') { dataOffset = off + 8; dataLength = sz; break; }
+    if (sz === 0 || sz > 1e9) break;
+    off += 8 + sz + (sz & 1);
   }
+  if (!fmt.sr || dataOffset === -1) throw new Error(`WAV parse failed: sr=${fmt.sr} dataOffset=${dataOffset}`);
 
-  console.log('[process] peaks extracted:', peaks.length, 'max:', Math.max(...peaks).toFixed(3));
+  const frameSize = Math.round((fmt.bps / 8) * fmt.ch);
+  const totalFrames = Math.floor(dataLength / frameSize);
+  const duration = Math.round(totalFrames / fmt.sr);
+  const spp = Math.max(1, Math.floor(totalFrames / NUM_PEAKS));
+  const chunkBytes = Math.min(frameSize * spp, frameSize * 256);
 
-  // 3. Save peaks + estimated duration to DB immediately
-  const durationSec = totalFrames / (fmt.dataLength / frameSize) *
-    (fmt.dataLength / frameSize / (44100)); // rough estimate, encoder will correct
-  const sampleRate = 44100; // default — WAV header has this but we only read 512 bytes
-  const estimatedDuration = Math.round(totalFrames / sampleRate);
-  await sb.from('tracks').update({ peaks, duration: estimatedDuration }).eq('id', trackId);
-  console.log('[process] peaks+duration saved, estimatedDuration:', estimatedDuration);
-
-  // 4. Trigger HLS encoding if encoder is configured
-  if (ENCODER_URL && ENCODE_SECRET) {
-    fetch(ENCODER_URL + '/encode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-encode-secret': ENCODE_SECRET },
-      body: JSON.stringify({ trackId, projectId, audioUrl }),
-    }).then(r => console.log('[process] encoder accepted:', r.status))
-      .catch(e => console.error('[process] encoder error:', e.message));
+  // Extract NUM_PEAKS via parallel range requests, 25 at a time
+  const peaks = new Array(NUM_PEAKS).fill(0);
+  for (let b = 0; b < NUM_PEAKS; b += 25) {
+    const end = Math.min(b + 25, NUM_PEAKS);
+    await Promise.all(Array.from({ length: end - b }, (_, k) => {
+      const i = b + k;
+      const s = dataOffset + i * spp * frameSize;
+      const e = Math.min(s + chunkBytes - 1, fileSize - 1);
+      if (s >= fileSize) return;
+      return fetch(audioUrl, { headers: { Range: `bytes=${s}-${e}` } })
+        .then(r => r.arrayBuffer())
+        .then(chunk => {
+          const cv = new DataView(chunk);
+          const bsamp = fmt.bps / 8;
+          let max = 0;
+          for (let j = 0; j + bsamp <= chunk.byteLength; j += bsamp) {
+            let val = 0;
+            if (fmt.bps === 16) val = Math.abs(cv.getInt16(j, true)) / 32768;
+            else if (fmt.bps === 24) {
+              const a = cv.getUint8(j), b = cv.getUint8(j+1), c = cv.getUint8(j+2);
+              let s = a | (b << 8) | (c << 16); if (s >= 0x800000) s -= 0x1000000;
+              val = Math.abs(s) / 8388608;
+            } else if (fmt.bps === 32) val = Math.abs(cv.getInt32(j, true)) / 2147483648;
+            if (val > max) max = val;
+          }
+          peaks[i] = parseFloat(max.toFixed(4));
+        }).catch(() => {});
+    }));
   }
+  return { peaks, duration };
 }
 
 export async function POST(request) {
@@ -123,12 +81,36 @@ export async function POST(request) {
     if (!trackId || !audioUrl) {
       return NextResponse.json({ error: 'trackId and audioUrl required' }, { status: 400 });
     }
-    // Run pipeline — Vercel keeps function alive until response is sent
-    // We respond 202 immediately then continue processing
-    const responsePromise = NextResponse.json({ status: 'processing', trackId }, { status: 202 });
-    runPipeline(trackId, projectId, audioUrl).catch(e => console.error('[process] error:', e.message));
-    return responsePromise;
+
+    // Run synchronously — Vercel keeps the function alive until we return
+    const { peaks, duration } = await extractPeaks(audioUrl);
+    const maxPeak = Math.max(...peaks);
+    if (maxPeak < 0.001) throw new Error('Peak extraction produced all zeros');
+
+    // Save peaks + duration to Supabase
+    const sb = createClient(SB_URL, SB_SERVICE_KEY);
+    const { error } = await sb.from('tracks').update({ peaks, duration }).eq('id', trackId);
+    if (error) throw new Error('DB save failed: ' + error.message);
+
+    // Fire encoder in background (separate service, can be async)
+    if (ENCODER_URL && ENCODE_SECRET) {
+      fetch(ENCODER_URL + '/encode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-encode-secret': ENCODE_SECRET },
+        body: JSON.stringify({ trackId, projectId, audioUrl }),
+      }).catch(e => console.error('[process] encoder fire-and-forget error:', e.message));
+    }
+
+    return NextResponse.json({ 
+      status: 'done', 
+      trackId, 
+      peaks: peaks.length, 
+      duration,
+      maxPeak: maxPeak.toFixed(3)
+    }, { status: 200 });
+
   } catch (e) {
+    console.error('[process] error:', e.message);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
