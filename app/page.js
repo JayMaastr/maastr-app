@@ -33,7 +33,14 @@ function WaveformCanvas({peaks}) {
   useEffect(()=>{
     const canvas=ref.current; if(!canvas) return;
     const data=(peaks&&peaks.length>4)?peaks:null;
-    if(!data) return;
+    if(!data){
+    ctx.clearRect(0,0,canvas.offsetWidth||268,48);
+    ctx.font='11px DM Mono,monospace';
+    ctx.fillStyle='rgba(232,160,32,0.5)';
+    ctx.textAlign='center';
+    ctx.fillText('Processing…',( canvas.offsetWidth||268)/2,28);
+    return;
+  }
     const W=canvas.offsetWidth||268,H=48;
     canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;
     canvas.style.width=W+'px';canvas.style.height=H+'px';
@@ -408,6 +415,19 @@ export default function Dashboard(){
     if(!error)setProjects(data||[]);
     setLoading(false);
   }
+useEffect(()=>{
+  if(!projects.length) return;
+  if(projects.every(p=>p.peaks&&p.peaks.length>=4)) return;
+  const timer=setInterval(async()=>{
+    const pending=projects.filter(p=>!p.peaks||p.peaks.length<4);
+    if(!pending.length){clearInterval(timer);return;}
+    const {data}=await sb.from('projects').select('id,peaks').in('id',pending.map(p=>p.id));
+    if(!data) return;
+    setProjects(prev=>prev.map(p=>{const f=data.find(d=>d.id===p.id);return(f&&f.peaks&&f.peaks.length>=4)?{...p,peaks:f.peaks}:p;}));
+  },3000);
+  return ()=>clearInterval(timer);
+},[projects.length]);
+
 
   // Auto-refresh projects that still have tracks processing (no peaks yet)
   useEffect(()=>{
