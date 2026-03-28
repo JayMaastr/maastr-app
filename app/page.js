@@ -3,8 +3,6 @@ import NotificationCenter from '@/app/components/NotificationCenter';
 import { useEffect, useState, useRef } from 'react';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
-);
-
 const TONES = [
   {label:'Warm + Loud',   short:'W+L', desc:'Heavy low end, maximum punch. Metal, hip-hop, EDM.'},
   {label:'Neutral + Loud',short:'N+L', desc:'Balanced but loud and competitive. Pop, rock, mainstream.'},
