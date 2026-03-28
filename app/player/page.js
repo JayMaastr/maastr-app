@@ -66,17 +66,26 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
       const hasRealPeaks = peaks && peaks.length > 4;
 
       if (!hasRealPeaks) {
-        // Clean flat center line — no fake waveforms ever
-        ctx.strokeStyle = 'rgba(232,160,32,0.2)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, H / 2);
-        ctx.lineTo(W, H / 2);
-        ctx.stroke();
-        ctx.restore();
-        rafRef.current = requestAnimationFrame(draw);
-        return;
-      }
+      // Show "Processing..." state — clear canvas and draw centered text
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      // Animated dot
+      const t = Date.now() / 500;
+      const dotAlpha = 0.4 + 0.6 * Math.abs(Math.sin(t));
+      ctx.fillStyle = 'rgba(232,160,32,' + dotAlpha + ')';
+      ctx.beginPath();
+      ctx.arc(W / 2 - 80, H / 2, 4, 0, Math.PI * 2);
+      ctx.fill();
+      // Text
+      ctx.font = '12px "DM Mono", monospace';
+      ctx.fillStyle = 'rgba(232,160,32,0.7)';
+      ctx.textAlign = 'center';
+      ctx.fillText('Processing audio… won’t be long', W / 2, H / 2 + 4);
+      ctx.restore();
+      rafRef.current = requestAnimationFrame(draw);
+      return;
+    }
 
       const prog = progressRef.current || 0;
       const BAR = 1, GAP = 0.5, STEP = BAR + GAP;
@@ -258,6 +267,20 @@ function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRena
   </div>);}
 export default function Player(){
   const [user,setUser]=useState(null);const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);
+useEffect(()=>{
+  if(tracks.length===0) return;
+  if(tracks.every(t=>t.peaks&&t.peaks.length>=4)) return;
+  const timer=setInterval(async()=>{
+    const {data}=await sb.from('tracks').select('id,peaks,duration').in('id',tracks.map(t=>t.id));
+    if(!data) return;
+    if(data.every(d=>d.peaks&&d.peaks.length>=4)){
+      setTracks(prev=>prev.map(t=>{const f=data.find(d=>d.id===t.id);return f?{...t,peaks:f.peaks,duration:f.duration}:t;}));
+      clearInterval(timer);
+    }
+  },3000);
+  return ()=>clearInterval(timer);
+},[tracks.map(t=>t.id).join(','),tracks.every(t=>t.peaks&&t.peaks.length>=4)]);
+
   // Poll for peaks if any track is still processing
   useEffect(()=>{
     const hasMissing = tracks.some(t=>!t.peaks||t.peaks.length<4);
