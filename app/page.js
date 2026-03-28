@@ -33,7 +33,7 @@ function WaveformCanvas({peaks}) {
   useEffect(()=>{
     const canvas=ref.current; if(!canvas) return;
     const data=(peaks&&peaks.length>4)?peaks:null;
-    if(!data){ctx.clearRect(0,0,W,H);return;}
+    if(!data) return;
     const W=canvas.offsetWidth||268,H=48;
     canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;
     canvas.style.width=W+'px';canvas.style.height=H+'px';
