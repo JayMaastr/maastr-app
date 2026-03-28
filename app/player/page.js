@@ -67,10 +67,10 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
       ctx.textBaseline = 'middle';
       ctx.fillStyle = 'rgba(232,160,32,' + (0.4 + pulse * 0.4) + ')';
       ctx.fillText('Processing audio… won’t be long', W / 2, H / 2);
-      const dotR = 3 + pulse * 2;
       ctx.beginPath();
-      ctx.arc(W / 2 - 130, H / 2, dotR, 0, Math.PI * 2);
+      ctx.arc(W / 2 - 132, H / 2, 3 + pulse * 2, 0, Math.PI * 2);
       ctx.fill();
+      rafRef.current = requestAnimationFrame(draw);
       return;
     }
 
