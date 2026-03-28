@@ -59,24 +59,18 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
       ctx.scale(dpr, dpr);
 
       if (!peaks || peaks.length < 4) {
-      // No peaks yet — show animated processing state
-      ctx.clearRect(0, 0, W, H);
       const t = Date.now() / 600;
       const pulse = 0.35 + 0.35 * Math.sin(t * Math.PI * 2);
-      const dotR = 4;
-      const textX = W / 2 + dotR * 2 + 4;
+      ctx.clearRect(0, 0, W, H);
       ctx.font = '500 12px DM Mono, monospace';
-      ctx.textAlign = 'left';
+      ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = 'rgba(232,160,32,' + (0.4 + pulse * 0.4) + ')';
-      const label = 'Processing audio… won’t be long';
-      const tw = ctx.measureText(label).width;
-      const startX = (W - tw - dotR * 2 - 8) / 2;
+      ctx.fillText('Processing audio… won’t be long', W / 2, H / 2);
+      const dotR = 3 + pulse * 2;
       ctx.beginPath();
-      ctx.arc(startX + dotR, H / 2, dotR * (0.7 + pulse * 0.5), 0, Math.PI * 2);
+      ctx.arc(W / 2 - 130, H / 2, dotR, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = 'rgba(232,160,32,' + (0.5 + pulse * 0.3) + ')';
-      ctx.fillText(label, startX + dotR * 2 + 6, H / 2);
       return;
     }
 
@@ -274,24 +268,16 @@ function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRena
   </div>);}
 export default function Player(){
   const [user,setUser]=useState(null);const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);
-  // Poll every 3s if any track still has no peaks — auto-updates waveform when ready
-  useEffect(() => {
-    if (tracks.length === 0) return;
-    if (tracks.every(t => t.peaks && t.peaks.length >= 4)) return;
-    const timer = setInterval(async () => {
-      const { data } = await sb.from('tracks')
-        .select('id,peaks,duration')
-        .in('id', tracks.map(t => t.id));
-      if (!data) return;
-      setTracks(prev => prev.map(t => {
-        const fresh = data.find(d => d.id === t.id);
-        return fresh ? { ...t, peaks: fresh.peaks, duration: fresh.duration } : t;
-      }));
-      if (data.every(t => t.peaks && t.peaks.length >= 4)) clearInterval(timer);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [tracks.length]);
-const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);
+  useEffect(()=>{
+    if(tracks.length===0||tracks.every(t=>t.peaks&&t.peaks.length>=4)) return;
+    const timer=setInterval(async()=>{
+      const {data}=await sb.from('tracks').select('id,peaks,duration').in('id',tracks.map(t=>t.id));
+      if(!data) return;
+      setTracks(prev=>prev.map(t=>{const f=data.find(d=>d.id===t.id);return f?{...t,peaks:f.peaks,duration:f.duration}:t;}));
+      if(data.every(t=>t.peaks&&t.peaks.length>=4)) clearInterval(timer);
+    },3000);
+    return ()=>clearInterval(timer);
+  },[tracks.length]);const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);
   const [pendingSeek,setPendingSeek]=useState(null);const audioRef=useRef(null);
   const [detailTrack,setDetailTrack]=useState(null);
   const [showRevModal,setShowRevModal]=useState(false);const [revFiles,setRevFiles]=useState([]);const [revDragging,setRevDragging]=useState(false);const [revUploading,setRevUploading]=useState(false);const [revStatus,setRevStatus]=useState('');
