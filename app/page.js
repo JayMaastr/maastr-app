@@ -535,7 +535,7 @@ export default function Dashboard(){
       // Insert tracks into DB
       const toneLabels=['W+L','N+L','B+L','W+N','N+N','B+N','W+G','N+G','B+G'];
       for(let i=0;i<trackSnapshot.length;i++){
-        const t=trackSnapshot[i];const res=uploadResults[i];if(!res)continue;
+        const t=trackSnapshot[i];const res=uploadResults[i];console.log('[MAASTR-DEBUG] track',i,'t.name:',t?.name,'t.file?.name:',t?.file?.name,'res:',JSON.stringify(res)?.substring(0,100),'proj_id:',proj?.id);if(!res)continue;
         const {data:newTrack}=await sb.from('tracks').insert({project_id:proj.id,title:t.name,audio_url:res.url,position:i,tone_setting:t.tone||4,tone_label:toneLabels[t.tone||4],duration:0}).select('id').single();
         // Fire peak extraction immediately — returns 202, runs in background
         if(newTrack?.id){
