@@ -408,23 +408,18 @@ export default function Dashboard(){
     if(!error)setProjects(data||[]);
     setLoading(false);
   }
-
-  useEffect(() => {
-    const pending = projects.filter(p => !p.peaks || p.peaks.length < 4);
-    if (pending.length === 0) return;
-    const ids = pending.map(p => p.id);
-    const timer = setInterval(async () => {
-      const { data } = await sb.from('projects').select('id,peaks').in('id', ids);
-      if (!data) return;
-      setProjects(prev => prev.map(p => {
-        const fresh = data.find(d => d.id === p.id);
-        return (fresh && fresh.peaks && fresh.peaks.length >= 4) ? { ...p, peaks: fresh.peaks } : p;
-      }));
-      if (data.every(d => d.peaks && d.peaks.length >= 4)) clearInterval(timer);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [projects.length]);
-
+  useEffect(()=>{
+    if(projects.length===0) return;
+    if(projects.every(p=>p.peaks&&p.peaks.length>=4)) return;
+    const timer=setInterval(async()=>{
+      const ids=projects.filter(p=>!p.peaks||p.peaks.length<4).map(p=>p.id);
+      if(ids.length===0){clearInterval(timer);return;}
+      const {data}=await sb.from('projects').select('id,peaks').in('id',ids);
+      if(!data) return;
+      setProjects(prev=>prev.map(p=>{const f=data.find(d=>d.id===p.id);return(f&&f.peaks&&f.peaks.length>=4)?{...p,peaks:f.peaks}:p;}));
+    },3000);
+    return ()=>clearInterval(timer);
+  },[projects.length]);
 
   function handleSave(id,title,artist,imageUrl){setProjects(prev=>prev.map(p=>p.id===id?{...p,title,artist,image_url:imageUrl}:p));}
 
