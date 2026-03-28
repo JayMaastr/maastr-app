@@ -526,7 +526,7 @@ export default function Dashboard(){
         const gcsData=await gcsRes.json();
         if(!gcsData.uploadUrl) return null;
         try{
-          const result=await xhrUpload(t.file,gcsData.uploadUrl,_ncIds[i],true);
+          await xhrUpload(t.file,gcsData.uploadUrl,_ncIds[i],true);
           const url=gcsData.publicUrl;
           return url?{...t,url}:null;
         }catch(e){console.error('Upload failed:',t.name,e);return null;}
