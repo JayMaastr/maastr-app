@@ -1,9 +1,8 @@
-# maastr mastering service v2.0 — DawDreamer passthrough with full logging
-import os, sys, json, base64, tempfile, time, threading
+# maastr mastering service v3.0
+import os, sys, json, base64, tempfile, subprocess, threading, time, gc
 from pathlib import Path
 import numpy as np
 import requests
-import gc
 import soundfile as sf
 from flask import Flask, request, jsonify
 
@@ -16,11 +15,10 @@ SUPABASE_URL = os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 PORT         = int(os.environ.get('PORT', 3002))
 
-# preset -> (gain_db, saturation_drive)
 PRESETS = {
-    'W+L': (4.0,  0.18), 'N+L': (4.0,  0.07), 'B+L': (4.0,  0.04),
-    'W+N': (1.5,  0.14), 'N+N': (1.5,  0.04), 'B+N': (1.5,  0.02),
-    'W+G': (0.5,  0.10), 'N+G': (0.5,  0.02), 'B+G': (0.5,  0.01),
+    'W+L': (4.0, 0.18), 'N+L': (4.0, 0.07), 'B+L': (4.0, 0.04),
+    'W+N': (1.5, 0.14), 'N+N': (1.5, 0.04), 'B+N': (1.5, 0.02),
+    'W+G': (0.5, 0.10), 'N+G': (0.5, 0.02), 'B+G': (0.5, 0.01),
 }
 
 def log(msg):
@@ -72,14 +70,12 @@ def run_ffmpeg_hls(wav_path, out_dir):
         raise RuntimeError(f"ffmpeg failed: {r.stderr[-300:]}")
 
 def process_master(master_id, revision_id, project_id, audio_url, preset):
-    import subprocess
     t0 = time.time()
     try:
         log(f"START master_id={master_id[:8]} preset={preset}")
         gain_db, sat_drive = PRESETS.get(preset, (1.5, 0.04))
         gain_linear = 10 ** (gain_db / 20.0)
 
-        # 1. Download source WAV
         log("step 1: downloading WAV...")
         r = requests.get(audio_url, timeout=120)
         r.raise_for_status()
@@ -89,112 +85,92 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
             src_wav = f"{tmpdir}/input.wav"
             with open(src_wav, 'wb') as f:
                 f.write(r.content)
+            del r
 
-            # 2. Read with soundfile (handles 24-bit correctly)
-            log("step 2: reading WAV with soundfile...")
-            audio_data, sample_rate = sf.read(src_wav, dtype='float32', always_2d=True)
-            # audio_data shape: (samples, channels)
+            log("step 2: reading WAV with soundfile (44.1k 24-bit)...")
+            audio_data, sample_rate = sf.read(src_wav, always_2d=True, dtype='float32')
             num_samples = audio_data.shape[0]
             num_channels = audio_data.shape[1]
-            log(f"step 2: {num_samples} samples, {num_channels}ch, {sample_rate}Hz, {time.time()-t0:.1f}s")
+            log(f"step 2: {num_samples} samples, {num_channels}ch, {sample_rate}Hz in {time.time()-t0:.1f}s")
 
-            # 3. DawDreamer passthrough with gain
             log("step 3: initialising DawDreamer RenderEngine...")
             import dawdreamer as daw
             engine = daw.RenderEngine(sample_rate, 512)
-            log(f"step 3: engine created in {time.time()-t0:.1f}s")
+            log(f"step 3: engine ready in {time.time()-t0:.1f}s")
 
-            # Prepare audio as (channels, samples) float32 for DawDreamer
-            audio_2d = audio_data.T.astype(np.float32)  # (2, N)
+            audio_2d = audio_data.T.astype(np.float32)
             if audio_2d.shape[0] == 1:
-                audio_2d = np.vstack([audio_2d, audio_2d])  # mono -> stereo
+                audio_2d = np.vstack([audio_2d, audio_2d])
 
             log("step 4: creating playback processor...")
             playback = engine.make_playback_processor("playback", audio_2d)
+            log(f"step 4: playback ready in {time.time()-t0:.1f}s")
 
-            # Free source arrays from RAM before rendering
+            # Free RAM before rendering
             del audio_2d
             del audio_data
             gc.collect()
-            log(f"step 4: memory freed, gc collected")
-            log(f"step 4: playback processor ready in {time.time()-t0:.1f}s")
+            log("step 4: memory freed")
 
-            # Simple Faust gain + soft saturation
             faust_code = f"""
 import("stdfaust.lib");
 gain = {gain_linear:.6f};
 drive = {sat_drive:.6f};
-process = _*(gain+drive*ma.tanh(_*gain)), _*(gain+drive*ma.tanh(_*gain));
+process = _*(gain+(drive*ma.tanh(_*gain))), _*(gain+(drive*ma.tanh(_*gain)));
 """
-            # Fallback: if Faust fails, apply gain directly via numpy
-            try:
-                log("step 5: creating Faust processor...")
-                faust_proc = engine.make_faust_processor("faust")
-                faust_proc.set_dsp_string(faust_code)
-                log(f"step 5: Faust processor ready in {time.time()-t0:.1f}s")
+            log("step 5: creating Faust processor...")
+            faust_proc = engine.make_faust_processor("faust")
+            faust_proc.set_dsp_string(faust_code)
+            log(f"step 5: Faust ready in {time.time()-t0:.1f}s")
 
-                engine.load_graph([
-                    (playback, []),
-                    (faust_proc, [playback.get_name()])
-                ])
-                log(f"step 6: graph loaded, rendering {num_samples} samples...")
-                engine.render(num_samples)
-                log(f"step 6: render complete in {time.time()-t0:.1f}s")
-                out_audio = engine.get_audio()  # (2, N)
-                log(f"step 6: got audio shape {out_audio.shape}")
-            except Exception as e:
-                log(f"step 5: Faust failed ({e}), falling back to numpy gain...")
-                # Numpy fallback — still passes through DawDreamer
-                engine.load_graph([(playback, [])])
-                engine.render(num_samples)
-                raw = engine.get_audio()
-                out_audio = np.tanh(raw * gain_linear) * (1.0 + sat_drive)
-                log(f"step 5: numpy fallback complete in {time.time()-t0:.1f}s")
+            engine.load_graph([
+                (playback, []),
+                (faust_proc, [playback.get_name()])
+            ])
 
-            # 5. Write 24-bit WAV output
+            log(f"step 6: rendering {num_samples} samples...")
+            engine.render(num_samples)
+            log(f"step 6: render complete in {time.time()-t0:.1f}s")
+
+            out_audio = engine.get_audio()
+            log(f"step 6: got audio shape {out_audio.shape}")
+
             log("step 7: writing 24-bit WAV...")
             out_wav = f"{tmpdir}/mastered.wav"
-            out_2d = out_audio.T  # (N, 2)
-            out_2d = np.clip(out_2d, -1.0, 1.0)
+            out_2d = np.clip(out_audio.T, -1.0, 1.0)
             sf.write(out_wav, out_2d, sample_rate, subtype='PCM_24')
             log(f"step 7: wrote {Path(out_wav).stat().st_size//1024}KB in {time.time()-t0:.1f}s")
 
-            # Compute peaks (800 points)
             mono = np.abs(out_2d.mean(axis=1))
-            bucket_size = max(1, len(mono) // 800)
-            peaks = [float(np.max(mono[i*bucket_size:(i+1)*bucket_size])) for i in range(800)]
+            bucket = max(1, len(mono)//800)
+            peaks = [float(np.max(mono[i*bucket:(i+1)*bucket])) for i in range(800)]
+            del out_audio, out_2d, mono
+            gc.collect()
 
-            # 6. Upload mastered WAV to GCS
             gcs_wav_key = f"projects/{project_id}/masters/{revision_id}/{master_id}/mastered.wav"
-            log(f"step 8: uploading WAV to GCS...")
+            log("step 8: uploading WAV to GCS...")
             audio_public_url = gcs_upload(out_wav, gcs_wav_key)
-            log(f"step 8: uploaded in {time.time()-t0:.1f}s -> {audio_public_url[-40:]}")
+            log(f"step 8: uploaded in {time.time()-t0:.1f}s")
 
-            # 7. HLS encode
-            log("step 9: HLS encoding with ffmpeg...")
+            log("step 9: HLS encoding...")
             hls_dir = f"{tmpdir}/hls"
             run_ffmpeg_hls(out_wav, hls_dir)
             log(f"step 9: HLS done in {time.time()-t0:.1f}s")
 
-            # 8. Upload HLS to GCS
-            log("step 10: uploading HLS to GCS...")
+            log("step 10: uploading HLS...")
             hls_base = f"projects/{project_id}/masters/{revision_id}/{master_id}/hls"
             m3u8_url = None
             for fname in sorted(os.listdir(hls_dir)):
                 url = gcs_upload(f"{hls_dir}/{fname}", f"{hls_base}/{fname}")
                 if fname.endswith('.m3u8'):
                     m3u8_url = url
-            log(f"step 10: HLS uploaded in {time.time()-t0:.1f}s -> {m3u8_url}")
+            log(f"step 10: HLS uploaded in {time.time()-t0:.1f}s")
 
-            # 9. Patch Supabase
             patch_supabase(master_id, {
-                'status': 'ready',
-                'audio_url': audio_public_url,
-                'hls_url': m3u8_url,
-                'peaks': peaks,
-                'completed_at': 'now()'
+                'status': 'ready', 'audio_url': audio_public_url,
+                'hls_url': m3u8_url, 'peaks': peaks, 'completed_at': 'now()'
             })
-            log(f"DONE in {time.time()-t0:.1f}s total")
+            log(f"DONE in {time.time()-t0:.1f}s")
 
     except Exception as e:
         log(f"ERROR: {e}")
@@ -204,7 +180,7 @@ process = _*(gain+drive*ma.tanh(_*gain)), _*(gain+drive*ma.tanh(_*gain));
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'service': 'maastr-mastering'})
+    return jsonify({'status': 'ok', 'service': 'maastr-mastering', 'version': '3.0'})
 
 @app.route('/master', methods=['POST'])
 def master():
@@ -217,12 +193,9 @@ def master():
     audio_url   = data['audioUrl']
     preset      = data['preset']
     log(f"received /master request: {preset} master_id={master_id[:8]}")
-    # Patch to processing immediately
-    patch_supabase(master_id, {'status': 'processing', 'requested_at': 'now()'})
-    # Run in background thread
+    patch_supabase(master_id, {'status': 'processing'})
     t = threading.Thread(target=process_master,
-        args=(master_id, revision_id, project_id, audio_url, preset))
-    t.daemon = True
+        args=(master_id, revision_id, project_id, audio_url, preset), daemon=True)
     t.start()
     return jsonify({'status': 'processing', 'masterId': master_id})
 
