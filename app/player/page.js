@@ -306,7 +306,7 @@ function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRena
     {renaming?(<div className="tr-rename" onClick={e=>e.stopPropagation()}><input className="tr-rename-input" value={renameVal} autoFocus onChange={e=>setRenameVal(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')saveRename();if(e.key==='Escape')cancelRename();}}/><button className="tr-rename-save" onClick={saveRename}>Save</button><button className="tr-rename-cancel" onClick={cancelRename}>Cancel</button></div>):(<>
       <div className="tr-play-zone" onClick={()=>onPlay(track.id)}>
         <div className="tr-num-play">{isPlaying?(<svg className="tr-playing-icon" width="14" height="14" viewBox="0 0 14 14" fill="var(--amber)"><rect x="1" y="1" width="4" height="12" rx="1"/><rect x="9" y="1" width="4" height="12" rx="1"/></svg>):(<span className="tr-idx">{idx+1}</span>)}</div>
-        <div className="tr-info"><span className="tr-name">{track.title}</span><div className="tr-meta">{revCount>0&&<span className="tr-rev">{revCount}v</span>}</div></div>
+        <div className="tr-info"><span className="tr-name">{track.title}</span><div className="tr-meta">{revisions.length>0&&<span className="tr-rev">{revisions[0]?.label||("v"+(revisions[0]?.version_number||"?"))}</span>}</div></div>
       </div>
       <div className="tr-actions">
         <button className="tr-comment-btn" onClick={e=>{e.stopPropagation();onDetail(track);}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{noteCount>0&&<span className="tr-note-count">{noteCount}</span>}</button>
