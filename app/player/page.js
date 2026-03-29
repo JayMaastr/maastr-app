@@ -237,7 +237,7 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
           {displayRev&&<div className="td-rev-row"><span className="td-rev-badge">{displayRev.label||'v1'}</span>{displayRev.tone_label&&<span className="td-tone-badge">{displayRev.tone_label}</span>}{revisions.length>1&&<button className="td-rev-switch" onClick={()=>setRevSwitcherOpen(v=>!v)}>{revisions.length} versions ▾</button>}</div>}
         </div>
       </div>
-      {revSwitcherOpen&&revisions.length>1&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
+      {revSwitcherOpen&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);setActiveMaster(null);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
       {/* Master selector — shows preset pills for active revision */}
       {displayRev&&<div className="td-master-section">
         <div className="td-master-label">REMASTER</div>
