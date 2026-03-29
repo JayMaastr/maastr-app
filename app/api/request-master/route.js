@@ -7,6 +7,7 @@ const sb = createClient(
 );
 
 // Valid presets — matches TONES array short codes (Warm/Neutral/Bright x Loud/Normal/Gentle)
+// mastering service: https://mastering-production-008a.up.railway.app
 const VALID_PRESETS = ['W+L','N+L','B+L','W+N','N+N','B+N','W+G','N+G','B+G'];
 
 export async function POST(request) {
