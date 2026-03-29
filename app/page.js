@@ -540,6 +540,7 @@ export default function Dashboard(){
         // Fire peak extraction immediately — returns 202, runs in background
         if(newTrack?.id){
           fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:newTrack.id,projectId:proj.id,audioUrl:res.url})}).catch(()=>{});
+          fetch('/api/trigger-encode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:newTrack.id,projectId:proj.id,audioUrl:res.url})}).catch(()=>{});
         }
       }
 
