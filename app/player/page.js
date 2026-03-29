@@ -207,8 +207,25 @@ function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){
     {showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}
   </div>);}
 
-function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,onRevisionSelect}){
-  const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [lockedTime,setLockedTime]=useState(currentTime);const [revSwitcherOpen,setRevSwitcherOpen]=useState(false);const inputRef=useRef(null);
+function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,onRevisionSelect,activeMaster,onMasterSelect}){
+  const [noteText,setNoteText]=useState('');
+  // Poll for pending masters every 8s
+  useEffect(()=>{
+    if(!displayRev?.id) return;
+    const pending = displayRev.masters?.filter(m=>m.status==='pending'||m.status==='processing');
+    if(!pending?.length) return;
+    const t = setTimeout(async()=>{
+      try {
+        const {data} = await sb.from('masters').select('*').eq('revision_id',displayRev.id);
+        if(data) {
+          // Update the track's revisions in parent state via a window event
+          window.dispatchEvent(new CustomEvent('masters-updated',{detail:{revisionId:displayRev.id,masters:data}}));
+        }
+      } catch(e){}
+    },8000);
+    return ()=>clearTimeout(t);
+  },[displayRev?.id, displayRev?.masters?.length]);
+const [posting,setPosting]=useState(false);const [lockedTime,setLockedTime]=useState(currentTime);const [revSwitcherOpen,setRevSwitcherOpen]=useState(false);const inputRef=useRef(null);
   const revisions=track?[...(track.revisions||[])].sort((a,b)=>(b.version_number||0)-(a.version_number||0)):[];
   const displayRev=activeRevision||(revisions.find(r=>r.is_active)||revisions[0]||null);
   function focusNote(){setLockedTime(currentTime);setTimeout(()=>inputRef.current?.focus(),60);}
@@ -224,6 +241,48 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
         </div>
       </div>
       {revSwitcherOpen&&revisions.length>1&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
+      {/* Master selector — shows preset pills for active revision */}
+      {displayRev&&<div className="td-master-section">
+        <div className="td-master-label">REMASTER</div>
+        <div className="td-master-pills">
+          {[
+            {short:'W+L',label:'Warm + Loud'},
+            {short:'N+L',label:'Neutral + Loud'},
+            {short:'B+L',label:'Bright + Loud'},
+            {short:'W+N',label:'Warm + Normal'},
+            {short:'N+N',label:'Neutral + Normal'},
+            {short:'B+N',label:'Bright + Normal'},
+            {short:'W+G',label:'Warm + Gentle'},
+            {short:'N+G',label:'Neutral + Gentle'},
+            {short:'B+G',label:'Bright + Gentle'}
+          ].map(preset=>{
+            const master=displayRev.masters?.find(m=>m.preset===preset.short);
+            const isActive=activeMaster?.preset===preset.short&&activeMaster?.revision_id===displayRev.id;
+            const isReady=master?.status==='ready';
+            const isPending=master?.status==='pending'||master?.status==='processing';
+            return(<button key={preset.short}
+              className={'td-master-pill'+(isActive?' active':'')+(isReady?' ready':'')+(isPending?' pending':'')}
+              title={preset.label}
+              onClick={()=>{
+                if(isActive){onMasterSelect(null);return;}
+                if(isReady){onMasterSelect({...master,revision_id:displayRev.id});return;}
+                if(!master||master.status==='failed'){
+                  fetch('/api/request-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revisionId:displayRev.id,preset:preset.short})}).catch(()=>{});
+                }
+              }}
+            >
+              <span className="td-master-pill-short">{preset.short}</span>
+              {isPending&&<span className="td-master-pill-status">⟳</span>}
+              {isReady&&!isActive&&<span className="td-master-pill-status">✓</span>}
+              {isActive&&<span className="td-master-pill-status">▶</span>}
+            </button>);
+          })}
+        </div>
+        {activeMaster&&<button className="td-master-clear" onClick={()=>onMasterSelect(null)}>
+          ✕ Back to original
+        </button>}
+      </div>}
+
       <div className="td-wave-wrap"><Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
       <div className="td-notes-scroll">
         {notes.length>0?(<><div className="td-notes-label">NOTES{displayRev&&<span className="td-notes-rev"> — {displayRev.label||'v1'}</span>}</div>{notes.map(n=>(<div key={n.id} className="td-note-item"><div className="td-note-meta"><span className="td-note-author">{n.author_name||'You'}</span>{n.timestamp_sec!=null&&(<button className="td-note-pill" onClick={()=>onSeekToTime(n.timestamp_sec)}><svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>{n.timestamp_label||fmt(n.timestamp_sec)}</button>)}</div><div className="td-note-body">{n.body}</div><span className="td-note-date">{new Date(n.created_at).toLocaleDateString()}</span></div>))}</>):(<div className="td-notes-empty">No notes yet — add the first one below</div>)}
@@ -278,7 +337,7 @@ export default function Player(){
       if(data.every(t=>t.peaks&&t.peaks.length>=4)) clearInterval(timer);
     },3000);
     return ()=>clearInterval(timer);
-  },[tracks.length]);const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);
+  },[tracks.length]);const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [activeMaster,setActiveMaster]=useState(null);const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);
   const [pendingSeek,setPendingSeek]=useState(null);const audioRef=useRef(null);
   const [detailTrack,setDetailTrack]=useState(null);
   const [showRevModal,setShowRevModal]=useState(false);const [revFiles,setRevFiles]=useState([]);const [revDragging,setRevDragging]=useState(false);const [revUploading,setRevUploading]=useState(false);const [revStatus,setRevStatus]=useState('');
@@ -301,7 +360,7 @@ const [showInvite,setShowInvite]=useState(false);
         setIsOwner(!!(user && proj.user_id === user.id));
         setDownloadEnabled(!!proj.downloads_enabled);
         setIsOwner(user && proj.user_id === user.id);
-        setDownloadEnabled(!!proj.downloads_enabled);const {data:tr}=await sb.from('tracks').select('*,revisions(*)').eq('project_id',pid).order('position');const {data:noteCounts}=await sb.from('notes').select('track_id').eq('project_id',pid);const countMap={};(noteCounts||[]).forEach(n=>{countMap[n.track_id]=(countMap[n.track_id]||0)+1;});const tl=(tr||[]).map(t=>({...t,revisions:[...(t.revisions||[])].sort((a,b)=>(a.version_number||0)-(b.version_number||0)),_noteCount:countMap[t.id]||0}));setTracks(tl);if(tl.length>0){const first=(_trackId&&tl.find(t=>t.id===_trackId))||tl[0];setActiveTrackId(first.id);if(_tSec!=null)setPendingSeek(parseFloat(_tSec));const rev=first.revisions?.find(r=>r.is_active)||first.revisions?.[first.revisions.length-1]||null;setActiveRevision(rev);loadNotes(first.id,rev?.id);}}
+        setDownloadEnabled(!!proj.downloads_enabled);const {data:tr}=await sb.from('tracks').select('*,revisions(*,masters(*))').eq('project_id',pid).order('position');const {data:noteCounts}=await sb.from('notes').select('track_id').eq('project_id',pid);const countMap={};(noteCounts||[]).forEach(n=>{countMap[n.track_id]=(countMap[n.track_id]||0)+1;});const tl=(tr||[]).map(t=>({...t,revisions:[...(t.revisions||[])].sort((a,b)=>(a.version_number||0)-(b.version_number||0)),_noteCount:countMap[t.id]||0}));setTracks(tl);if(tl.length>0){const first=(_trackId&&tl.find(t=>t.id===_trackId))||tl[0];setActiveTrackId(first.id);if(_tSec!=null)setPendingSeek(parseFloat(_tSec));const rev=first.revisions?.find(r=>r.is_active)||first.revisions?.[first.revisions.length-1]||null;setActiveRevision(rev);loadNotes(first.id,rev?.id);}}
   async function loadNotes(trackId,revId){const {data}=await sb.from('notes').select('*').eq('track_id',trackId).order('timestamp_sec');const all=data||[];const filtered=revId?all.filter(n=>n.revision_id===revId||n.revision_id===null):all;setNotes(filtered);setTracks(prev=>prev.map(t=>t.id===trackId?{...t,_noteCount:filtered.length}:t));}
   const activeTrack=tracks.find(t=>t.id===activeTrackId)||null;
   const activeIdx=tracks.findIndex(t=>t.id===activeTrackId);
@@ -311,8 +370,8 @@ const [showInvite,setShowInvite]=useState(false);
     if(!el||!activeTrackId)return;
     const track=tracks.find(t=>t.id===activeTrackId);
     const rev=activeRevision;
-    const hlsUrl=rev?.hls_url||track?.hls_url||null;
-    const wavUrl=rev?.audio_url||track?.audio_url||null;
+    const hlsUrl=activeMaster?.hls_url||rev?.hls_url||track?.hls_url||null;
+    const wavUrl=activeMaster?.audio_url||rev?.audio_url||track?.audio_url||null;
     if(!hlsUrl&&!wavUrl)return;
     // Destroy any existing HLS instance
     if(window.__hlsInst){window.__hlsInst.destroy();window.__hlsInst=null;}
@@ -349,7 +408,7 @@ const [showInvite,setShowInvite]=useState(false);
     return ()=>{
       if(window.__hlsInst){window.__hlsInst.destroy();window.__hlsInst=null;}
     };
-  },[activeTrackId,activeRevision,tracks]);
+  },[activeTrackId,activeRevision,activeMaster,tracks]);
 
   // HLS polling — watches for hls_url to appear after encoding completes
   useEffect(()=>{
@@ -382,7 +441,7 @@ const [showInvite,setShowInvite]=useState(false);
   function handleSeek(pct){if(!audioRef.current||!duration)return;const t=pct*duration;audioRef.current.currentTime=t;setCurrentTime(t);}
   function seekToTime(sec){if(!audioRef.current)return;audioRef.current.currentTime=sec;setCurrentTime(sec);if(!playing){audioRef.current.play().catch(()=>{});setPlaying(true);}}
   async function postNote(body,timestampSec){if(!body.trim()||!activeTrack)return;await sb.from('notes').insert({track_id:activeTrack.id,project_id:project.id,revision_id:activeRevision?.id||null,author_name:user?.email?.split('@')[0]||'You',timestamp_sec:timestampSec,timestamp_label:fmt(timestampSec),body:body.trim()});loadNotes(activeTrack.id,activeRevision?.id);}
-  function selectRevisionInDetail(rev){if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveRevision(rev);loadNotes(activeTrack?.id,rev?.id);}
+  function selectRevisionInDetail(rev){setActiveMaster(null);if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveRevision(rev);loadNotes(activeTrack?.id,rev?.id);}
   async function reorderTracks(fromIdx,toIdx){if(fromIdx===toIdx)return;const nt=[...tracks];const [m]=nt.splice(fromIdx,1);nt.splice(toIdx,0,m);const updated=nt.map((t,i)=>({...t,position:i}));setTracks(updated);await Promise.all(updated.map(t=>sb.from('tracks').update({position:t.position}).eq('id',t.id)));}
   async function renameTrack(trackId,newTitle){await sb.from('tracks').update({title:newTitle}).eq('id',trackId);setTracks(prev=>prev.map(t=>t.id===trackId?{...t,title:newTitle}:t));}
   async function deleteTrack(track){setDeleteTrackConfirm(null);const urls=new Set();(track.revisions||[]).forEach(r=>{if(r.audio_url)urls.add(r.audio_url);if(r.mp3_url&&r.mp3_url!==r.audio_url)urls.add(r.mp3_url);});if(track.audio_url)urls.add(track.audio_url);await Promise.allSettled([...urls].map(url=>{try{const k=decodeURIComponent(new URL(url).pathname.replace(/^\//,''));return fetch(UPLOAD_WORKER_URL,{method:'DELETE',headers:{'X-File-Key':k}});}catch{return Promise.resolve();}}));await sb.from('notes').delete().eq('track_id',track.id);await sb.from('revisions').delete().eq('track_id',track.id);await sb.from('tracks').delete().eq('id',track.id);setTracks(prev=>prev.filter(t=>t.id!==track.id));if(activeTrackId===track.id){setActiveTrackId(null);setActiveRevision(null);setNotes([]);}}
@@ -479,7 +538,20 @@ const [showInvite,setShowInvite]=useState(false);
     .tgm-tip-label{font-size:11px;color:var(--amber);font-weight:500;}.tgm-tip-desc{font-size:10px;color:var(--t2);}
     .tgm-set-all{width:100%;margin-top:8px;padding:9px;border-radius:8px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);font-family:var(--fm);font-size:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;}.tgm-set-all:hover{border-color:var(--amber);color:var(--amber);}
     .btn-amber-sm{font-family:var(--fm);font-size:13px;font-weight:500;padding:8px 16px;border-radius:8px;background:var(--amber);color:#000;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;}.btn-amber-sm:disabled{opacity:.35;pointer-events:none;}
-    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar,.td-modal-bar{padding-left:24px;padding-right:24px;}}`}</style>
+    @media(min-width:640px){.page{padding:16px 24px 120px;}.ps-waveform-bar,.ps-controls-bar,.td-modal-bar{padding-left:24px;padding-right:24px;}}
+.td-master-section{padding:8px 16px 4px;border-top:1px solid var(--border);}
+.td-master-label{font-size:9px;letter-spacing:.12em;color:var(--amber);font-weight:600;margin-bottom:6px;text-transform:uppercase;}
+.td-master-pills{display:flex;flex-wrap:wrap;gap:4px;}
+.td-master-pill{background:transparent;border:1px solid var(--border);border-radius:4px;padding:3px 7px;font-size:10px;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;gap:3px;transition:all .15s;}
+.td-master-pill:hover{border-color:var(--amber);color:var(--text);}
+.td-master-pill.ready{border-color:var(--amber);color:var(--amber);}
+.td-master-pill.active{background:var(--amber);border-color:var(--amber);color:#000;font-weight:600;}
+.td-master-pill.pending{border-color:var(--text-muted);color:var(--text-muted);opacity:.6;}
+.td-master-pill-short{font-family:monospace;font-size:10px;}
+.td-master-pill-status{font-size:9px;}
+.td-master-clear{margin-top:6px;background:transparent;border:none;color:var(--text-muted);font-size:10px;cursor:pointer;padding:2px 0;}
+.td-master-clear:hover{color:var(--amber);}
+`}</style>
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><a href="/" className="back">← Dashboard</a></div>
 
       <div style={{position:'relative',marginLeft:'auto',flexShrink:0}}>
@@ -531,7 +603,7 @@ const [showInvite,setShowInvite]=useState(false);
             </button><button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx+1)} disabled={!activeTrack||activeIdx<0||activeIdx>=tracks.length-1}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,5 15,12 5,19"/><rect x="16.5" y="5" width="2.5" height="14" rx="1"/></svg></button></div>
       </div>
     </div>
-    <TrackDetail open={!!detailTrack} track={detailTrack||activeTrack} activeRevision={activeRevision} notes={notes} currentTime={currentTime} duration={duration} progress={progress} isPlaying={playing} onTogglePlay={togglePlay} onSkip={skip} onPrevTrack={()=>jumpToTrack(activeIdx-1)} onNextTrack={()=>jumpToTrack(activeIdx+1)} canPrev={activeIdx>0} canNext={activeIdx>=0&&activeIdx<tracks.length-1} onSeek={handleSeek} onClose={()=>setDetailTrack(null)} onPost={postNote} onSeekToTime={seekToTime} onRevisionSelect={selectRevisionInDetail}/>
+    <TrackDetail open={!!detailTrack} track={detailTrack||activeTrack} activeRevision={activeRevision} notes={notes} currentTime={currentTime} duration={duration} progress={progress} isPlaying={playing} onTogglePlay={togglePlay} onSkip={skip} onPrevTrack={()=>jumpToTrack(activeIdx-1)} onNextTrack={()=>jumpToTrack(activeIdx+1)} canPrev={activeIdx>0} canNext={activeIdx>=0&&activeIdx<tracks.length-1} onSeek={handleSeek} onClose={()=>setDetailTrack(null)} onPost={postNote} onSeekToTime={seekToTime} onRevisionSelect={selectRevisionInDetail} activeMaster={activeMaster} onMasterSelect={setActiveMaster}/>
     <audio ref={audioRef} preload="metadata" onTimeUpdate={e=>{setCurrentTime(e.target.currentTime);if(typeof navigator!=='undefined'&&'mediaSession' in navigator&&activeTrack){navigator.mediaSession.metadata=new MediaMetadata({title:activeTrack.title||'',artist:project?.artist||'',album:project?.title||'',artwork:project?.image_url?[{src:project.image_url,sizes:'512x512',type:'image/jpeg'}]:[]});navigator.mediaSession.setActionHandler('play',()=>audioRef.current?.play());navigator.mediaSession.setActionHandler('pause',()=>audioRef.current?.pause());}}} onDurationChange={e=>{if(e.target.duration&&isFinite(e.target.duration))setDuration(e.target.duration);}} onEnded={()=>setPlaying(false)} onError={()=>{setDuration(0);setPlaying(false);}}/>
     {deleteTrackConfirm&&(<div className="overlay-bg" onClick={()=>setDeleteTrackConfirm(null)}><div className="confirm-box" onClick={e=>e.stopPropagation()}><div className="confirm-box-title">Delete “{deleteTrackConfirm.title}”?</div><div className="confirm-box-sub">Permanently deletes all revisions and notes. Cannot be undone.</div><div className="confirm-box-actions"><button className="btn-confirm-cancel" onClick={()=>setDeleteTrackConfirm(null)}>Keep it</button><button className="btn-confirm-delete" onClick={()=>deleteTrack(deleteTrackConfirm)}>Delete Forever</button></div></div></div>)}
     {rerunTrack&&(<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!rerunUploading&&setRerunTrack(null)}><div className="modal-scroll-inner"><div className="rev-modal"><div className="rev-modal-title">Remaster</div><div className="rerun-target">Track: <strong>{rerunTrack.title}</strong></div><p style={{fontSize:12,color:'var(--t2)',marginBottom:12,lineHeight:1.5}}>Choose a new tone setting. Same source audio, new mastering.</p><ToneGrid value={rerunTone} usedTones={rerunUsedTones} onChange={setRerunTone}/><div className="rev-modal-footer"><span className="rev-modal-status">{rerunStatus}</span><button className="btn-ghost-sm" disabled={rerunUploading} onClick={()=>setRerunTrack(null)}>Cancel</button><button className="btn-amber-sm" disabled={rerunTone===null||rerunUploading} onClick={submitRerun}>{rerunUploading?'Processing…':'Remaster'}</button></div></div></div></div>)}
