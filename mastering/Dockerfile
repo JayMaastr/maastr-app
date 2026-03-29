@@ -1,12 +1,12 @@
 FROM python:3.10-slim-bullseye
 
 # Install OS-level audio dependencies
-# libasound2 is for JUCE/DawDreamer to initialize the headless audio engine
-# libsndfile1 is required for reading/writing standard audio formats
-# libfftw3-3 is DawDreamer's FFT backend
-# libgomp1 is required by numpy/scipy
-# ffmpeg is for HLS encoding
-RUN apt-get update && apt-get install -y \
+# libasound2 = JUCE/DawDreamer ALSA audio init (critical — without this RenderEngine hangs)
+# libsndfile1 = audio file I/O
+# libfftw3-3 = DawDreamer FFT backend
+# libgomp1 = OpenMP (numpy/scipy)
+# ffmpeg = HLS encoding
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libsndfile1 \
     libfftw3-3 \
@@ -16,14 +16,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy requirements and install first (layer caching)
+# Install deps first (layer cache)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all app code (includes main.py and any future VST plugins)
+# Copy all app code + any future Linux VST3 plugins
 COPY . .
 
-# Create dedicated temp directory for WAV processing
+# Dedicated temp dir for WAV processing (cleaned up after each job)
 RUN mkdir -p /tmp/mastering_zone
 
 EXPOSE 3002
