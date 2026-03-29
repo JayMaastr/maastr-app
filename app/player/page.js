@@ -350,6 +350,30 @@ const [showInvite,setShowInvite]=useState(false);
       if(window.__hlsInst){window.__hlsInst.destroy();window.__hlsInst=null;}
     };
   },[activeTrackId,activeRevision,tracks]);
+
+  // HLS polling — watches for hls_url to appear after encoding completes
+  useEffect(()=>{
+    if(!activeTrackId) return;
+    const track=tracks.find(t=>t.id===activeTrackId);
+    if(!track||track.hls_url) return; // already has HLS, nothing to do
+    let timer=null;
+    let attempts=0;
+    const maxAttempts=36; // 3 minutes max (36 * 5s)
+    const poll=async()=>{
+      try{
+        const {data}=await sb.from('tracks').select('id,hls_url').eq('id',activeTrackId).single();
+        if(data?.hls_url){
+          setTracks(prev=>prev.map(t=>t.id===activeTrackId?{...t,hls_url:data.hls_url}:t));
+          return; // stop polling
+        }
+      }catch(e){}
+      attempts++;
+      if(attempts<maxAttempts) timer=setTimeout(poll,5000);
+    };
+    timer=setTimeout(poll,5000); // first check after 5s
+    return()=>{if(timer)clearTimeout(timer);};
+  },[activeTrackId,tracks]);
+
   function playTrack(trackId){if(trackId===activeTrackId){if(audioRef.current){if(playing){audioRef.current.pause();setPlaying(false);}else{audioRef.current.play().catch(()=>{});setPlaying(true);}}return;}if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(trackId);const t=tracks.find(tr=>tr.id===trackId);if(!t)return;const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
   function openDetail(track){if(track.id!==activeTrackId){if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(track.id);const rev=track.revisions?.find(r=>r.is_active)||track.revisions?.[track.revisions.length-1]||null;setActiveRevision(rev);loadNotes(track.id,rev?.id);}setDetailTrack(track);}
   function jumpToTrack(idx){if(idx<0||idx>=tracks.length)return;const t=tracks[idx];if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(t.id);const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);setDetailTrack(prev=>prev?t:null);setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
