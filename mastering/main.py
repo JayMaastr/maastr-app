@@ -128,7 +128,7 @@ process = _*(gain+drive*ma.tanh(_*gain)), _*(gain+drive*ma.tanh(_*gain));
 
                 engine.load_graph([
                     (playback, []),
-                    (faust_proc, [playback])
+                    (faust_proc, [playback.get_name()])
                 ])
                 log(f"step 6: graph loaded, rendering {num_samples} samples...")
                 engine.render(num_samples)
