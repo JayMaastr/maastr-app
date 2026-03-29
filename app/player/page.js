@@ -208,26 +208,23 @@ function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){
   </div>);}
 
 function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,onRevisionSelect,activeMaster,onMasterSelect}){
-  const [noteText,setNoteText]=useState('');
-  // Poll for pending masters every 8s
-  useEffect(()=>{
-    if(!displayRev?.id) return;
-    const pending = displayRev.masters?.filter(m=>m.status==='pending'||m.status==='processing');
-    if(!pending?.length) return;
-    const t = setTimeout(async()=>{
-      try {
-        const {data} = await sb.from('masters').select('*').eq('revision_id',displayRev.id);
-        if(data) {
-          // Update the track's revisions in parent state via a window event
-          window.dispatchEvent(new CustomEvent('masters-updated',{detail:{revisionId:displayRev.id,masters:data}}));
-        }
-      } catch(e){}
-    },8000);
-    return ()=>clearTimeout(t);
-  },[displayRev?.id, displayRev?.masters?.length]);
-const [posting,setPosting]=useState(false);const [lockedTime,setLockedTime]=useState(currentTime);const [revSwitcherOpen,setRevSwitcherOpen]=useState(false);const inputRef=useRef(null);
+  const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [lockedTime,setLockedTime]=useState(currentTime);const [revSwitcherOpen,setRevSwitcherOpen]=useState(false);const inputRef=useRef(null);
   const revisions=track?[...(track.revisions||[])].sort((a,b)=>(b.version_number||0)-(a.version_number||0)):[];
   const displayRev=activeRevision||(revisions.find(r=>r.is_active)||revisions[0]||null);
+  // Poll for pending masters every 8s while any are processing
+  useEffect(()=>{
+    if(!displayRev?.id) return;
+    const pending=displayRev.masters?.filter(m=>m.status==='pending'||m.status==='processing');
+    if(!pending?.length) return;
+    const t=setTimeout(async()=>{
+      try{
+        const {data}=await sb.from('masters').select('*').eq('revision_id',displayRev.id);
+        if(data) window.dispatchEvent(new CustomEvent('masters-updated',{detail:{revisionId:displayRev.id,masters:data}}));
+      }catch(e){}
+    },8000);
+    return ()=>clearTimeout(t);
+  },[displayRev?.id,displayRev?.masters?.map(m=>m.status).join()]);
+
   function focusNote(){setLockedTime(currentTime);setTimeout(()=>inputRef.current?.focus(),60);}
   async function handlePost(){if(!noteText.trim()||posting)return;setPosting(true);await onPost(noteText.trim(),lockedTime);setNoteText('');setPosting(false);}
   return(<>
