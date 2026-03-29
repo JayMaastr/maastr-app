@@ -30,4 +30,4 @@ EXPOSE 3002
 
 # xvfb-run creates a fake X11 display — prevents JUCE/VST from crashing
 # on headless Railway containers that have no monitor
-CMD ["xvfb-run", "-a", "python", "main.py"]
+CMD ["xvfb-run", "-a", "gunicorn", "--workers", "1", "--threads", "2", "--timeout", "300", "main:app"]
