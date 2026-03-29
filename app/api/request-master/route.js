@@ -63,6 +63,7 @@ export async function POST(request) {
         body: JSON.stringify({
           masterId: master.id,
           revisionId,
+          projectId: revision.project_id,
           audioUrl: revision.audio_url,
           preset,
           secret: masteringSecret
