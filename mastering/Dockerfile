@@ -1,30 +1,33 @@
 FROM python:3.10-slim-bullseye
 
-# Install OS-level audio dependencies
-# libasound2 = JUCE/DawDreamer ALSA audio init (critical — without this RenderEngine hangs)
-# libsndfile1 = audio file I/O
-# libfftw3-3 = DawDreamer FFT backend
-# libgomp1 = OpenMP (numpy/scipy)
-# ffmpeg = HLS encoding
+# Audio deps: libasound2 = ALSA/JUCE init (critical), libsndfile1 = audio I/O,
+#             libfftw3-3 = DawDreamer FFT, libgomp1 = OpenMP, ffmpeg = HLS
+# Display deps: libx11-6 libxext6 libgl1-mesa-glx xvfb = fake display for JUCE/VST
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libsndfile1 \
     libfftw3-3 \
     libgomp1 \
     ffmpeg \
+    libx11-6 \
+    libxext6 \
+    libgl1-mesa-glx \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install deps first (layer cache)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all app code + any future Linux VST3 plugins
+# Copy all app code + future Linux VST3 plugins (.so files)
 COPY . .
 
-# Dedicated temp dir for WAV processing (cleaned up after each job)
+# Temp dir for audio processing (always cleaned up after each job)
 RUN mkdir -p /tmp/mastering_zone
 
 EXPOSE 3002
-CMD ["python", "main.py"]
+
+# xvfb-run creates a fake X11 display — prevents JUCE/VST from crashing
+# on headless Railway containers that have no monitor
+CMD ["xvfb-run", "-a", "python", "main.py"]
