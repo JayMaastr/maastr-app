@@ -3,6 +3,7 @@ import os, sys, json, base64, tempfile, time, threading
 from pathlib import Path
 import numpy as np
 import requests
+import gc
 import soundfile as sf
 from flask import Flask, request, jsonify
 
@@ -110,6 +111,12 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
 
             log("step 4: creating playback processor...")
             playback = engine.make_playback_processor("playback", audio_2d)
+
+            # Free source arrays from RAM before rendering
+            del audio_2d
+            del audio_data
+            gc.collect()
+            log(f"step 4: memory freed, gc collected")
             log(f"step 4: playback processor ready in {time.time()-t0:.1f}s")
 
             # Simple Faust gain + soft saturation
