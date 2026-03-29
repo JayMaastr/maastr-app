@@ -11,8 +11,8 @@ export async function POST(request) {
     if (!encoderUrl) {
       return NextResponse.json({ error: 'encoder not configured' }, { status: 503 });
     }
-    // Fire and forget — don't await, return immediately to client
-    fetch(`${encoderUrl}/encode`, {
+    // MUST await — Vercel kills fire-and-forget fetches after response is sent
+    await fetch(`${encoderUrl}/encode`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ trackId, projectId, audioUrl, secret })
