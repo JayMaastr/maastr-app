@@ -4,4 +4,4 @@ cmds = ["pip install -r requirements.txt"]
 [start]
 cmd = "python main.py"
 
-# v2.0
+# v3.0
