@@ -5,3 +5,4 @@ requests>=2.31.0
 cryptography>=41.0.0
 dawdreamer==0.8.3
 soundfile>=0.12.1
+gunicorn>=21.2.0
