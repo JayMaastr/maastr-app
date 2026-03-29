@@ -1,7 +1,11 @@
 FROM python:3.10-slim-bullseye
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg libgomp1 libsndfile1 \
+    ffmpeg \
+    libgomp1 \
+    libsndfile1 \
+    libasound2 \
+    libfftw3-3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
