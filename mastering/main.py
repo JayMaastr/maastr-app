@@ -95,7 +95,7 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
 
             log("step 3: initialising DawDreamer RenderEngine...")
             import dawdreamer as daw
-            engine = daw.RenderEngine(sample_rate, 512)
+            engine = daw.RenderEngine(sample_rate, 8192)
             log(f"step 3: engine ready in {time.time()-t0:.1f}s")
 
             audio_2d = audio_data.T.astype(np.float32)
@@ -112,20 +112,10 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
             gc.collect()
             log("step 4: memory freed")
 
-            faust_code = f"""
-import("stdfaust.lib");
-gain = {gain_linear:.6f};
-drive = {sat_drive:.6f};
-process = _*(gain+(drive*ma.tanh(_*gain))), _*(gain+(drive*ma.tanh(_*gain)));
-"""
-            log("step 5: creating Faust processor...")
-            faust_proc = engine.make_faust_processor("faust")
-            faust_proc.set_dsp_string(faust_code)
-            log(f"step 5: Faust ready in {time.time()-t0:.1f}s")
-
+            # Faust bypassed for speed benchmarking — gain-only passthrough
+            log("step 5: bypassing Faust (passthrough benchmark)")
             engine.load_graph([
-                (playback, []),
-                (faust_proc, [playback.get_name()])
+                (playback, [])
             ])
 
             log(f"step 6: rendering {num_samples} samples...")
