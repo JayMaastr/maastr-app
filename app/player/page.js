@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
+import NotificationCenter from '@/app/components/NotificationCenter';
 
 function fmt(s){if(!s||isNaN(s))return'0:00';return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');}
 function sanitize(n){return n.replace(/[^a-zA-Z0-9._-]/g,'_');}
@@ -296,7 +297,7 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
       </div>
     </div>
   </>);}
-function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRename,onDeleteTrack,onDeleteRevision,onRerunRevision}){
+function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRename,onDeleteTrack,onDeleteRevision,onRerunRevision,isMastering}){
   const [menuOpen,setMenuOpen]=useState(false);const [renaming,setRenaming]=useState(false);const [renameVal,setRenameVal]=useState(track.title||'');const menuBtnRef=useRef(null);
   const revisions=[...(track.revisions||[])].sort((a,b)=>(b.version_number||0)-(a.version_number||0));const revCount=revisions.length;
   const [revDeleteOpen,setRevDeleteOpen]=useState(false);const [deleteRevStep,setDeleteRevStep]=useState(0);const [deleteRevTarget,setDeleteRevTarget]=useState(null);
@@ -306,7 +307,7 @@ function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRena
     {renaming?(<div className="tr-rename" onClick={e=>e.stopPropagation()}><input className="tr-rename-input" value={renameVal} autoFocus onChange={e=>setRenameVal(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')saveRename();if(e.key==='Escape')cancelRename();}}/><button className="tr-rename-save" onClick={saveRename}>Save</button><button className="tr-rename-cancel" onClick={cancelRename}>Cancel</button></div>):(<>
       <div className="tr-play-zone" onClick={()=>onPlay(track.id)}>
         <div className="tr-num-play">{isPlaying?(<svg className="tr-playing-icon" width="14" height="14" viewBox="0 0 14 14" fill="var(--amber)"><rect x="1" y="1" width="4" height="12" rx="1"/><rect x="9" y="1" width="4" height="12" rx="1"/></svg>):(<span className="tr-idx">{idx+1}</span>)}</div>
-        <div className="tr-info"><span className="tr-name">{track.title}</span><div className="tr-meta">{revisions.length>0&&<span className="tr-rev">{revisions[0]?.label||("v"+(revisions[0]?.version_number||"?"))}</span>}</div></div>
+        <div className="tr-info"><span className="tr-name">{track.title}</span><div className="tr-meta">{isMastering&&<span style={{display:'flex',alignItems:'center',gap:4,fontSize:11,color:'var(--gold)',fontWeight:600,letterSpacing:'0.02em'}}><svg style={{animation:'spin 1s linear infinite',flexShrink:0}} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Mastering…</span>}{revisions.length>0&&<span className="tr-rev">{revisions[0]?.label||("v"+(revisions[0]?.version_number||"?"))}</span>}</div></div>
       </div>
       <div className="tr-actions">
         <button className="tr-comment-btn" onClick={e=>{e.stopPropagation();onDetail(track);}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{noteCount>0&&<span className="tr-note-count">{noteCount}</span>}</button>
@@ -338,7 +339,8 @@ export default function Player(){
   const [pendingSeek,setPendingSeek]=useState(null);const audioRef=useRef(null);
   const [detailTrack,setDetailTrack]=useState(null);
   const [showRevModal,setShowRevModal]=useState(false);const [revFiles,setRevFiles]=useState([]);const [revDragging,setRevDragging]=useState(false);const [revUploading,setRevUploading]=useState(false);const [revStatus,setRevStatus]=useState('');
-  const [rerunTrack,setRerunTrack]=useState(null);const [rerunTone,setRerunTone]=useState(null);const [rerunUploading,setRerunUploading]=useState(false);const [rerunStatus,setRerunStatus]=useState('');
+  const [rerunTrack,setRerunTrack]=useState(null);const [rerunTone,setRerunTone]=useState(null);
+  const [processingMasters,setProcessingMasters]=useState({});const [rerunUploading,setRerunUploading]=useState(false);const [rerunStatus,setRerunStatus]=useState('');
   const [deleteTrackConfirm,setDeleteTrackConfirm]=useState(null);
     const [showMenu,setShowMenu]=useState(false);
 const [showInvite,setShowInvite]=useState(false);
@@ -353,6 +355,19 @@ const [showInvite,setShowInvite]=useState(false);
   const [reportMsg,setReportMsg]=useState('');
   const [reportSent,setReportSent]=useState(false);
   useEffect(()=>{sb.auth.getSession().then(({data:{session}})=>{if(!session){window.location.href='/auth';return;}setUser(session.user);const pid=new URLSearchParams(window.location.search).get('project');const _sp=new URLSearchParams(window.location.search);const _trackId=_sp.get('track');const _tSec=_sp.get('t');if(!pid){window.location.href='/';return;}loadProject(pid,_trackId,_tSec);});},[]);
+
+  useEffect(()=>{
+    if(!project?.id) return;
+    let interval;
+    const poll=async()=>{
+      const {data}=await sb.from('masters').select('id,status,revision_id').eq('project_id',project.id).in('status',['pending','processing']);
+      if(!data||data.length===0){setProcessingMasters({});clearInterval(interval);loadProject(project.id);return;}
+      const map={};data.forEach(m=>{map[m.revision_id]=m.status;});setProcessingMasters(map);
+    };
+    poll();interval=setInterval(poll,3000);
+    return()=>clearInterval(interval);
+  },[project?.id]);
+
   async function loadProject(pid,_trackId,_tSec){const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();if(!proj){window.location.href='/';return;}setProject(proj);
         setIsOwner(!!(user && proj.user_id === user.id));
         setDownloadEnabled(!!proj.downloads_enabled);
@@ -548,10 +563,10 @@ const [showInvite,setShowInvite]=useState(false);
 .td-master-pill-status{font-size:9px;}
 .td-master-clear{margin-top:6px;background:transparent;border:none;color:var(--text-muted);font-size:10px;cursor:pointer;padding:2px 0;}
 .td-master-clear:hover{color:var(--amber);}
-`}</style>
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><a href="/" className="back">← Dashboard</a></div>
 
-      <div style={{position:'relative',marginLeft:'auto',flexShrink:0}}>
+      {user&&<NotificationCenter user={user}/>}<div style={{position:'relative',marginLeft:'auto',flexShrink:0}}>
         <div style={{width:32,height:32,borderRadius:'50%',background:'var(--surf3)',border:'1px solid var(--border2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'var(--t2)',cursor:'pointer'}} onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
         {showMenu&&(<>
           <div style={{position:'fixed',inset:0,zIndex:99}} onClick={()=>setShowMenu(false)}/>
@@ -587,7 +602,7 @@ const [showInvite,setShowInvite]=useState(false);
       </div>}
       <div className="tracks-lbl">{tracks.length} {tracks.length===1?'track':'tracks'}</div>
       <div style={{borderRadius:12,overflow:'hidden',border:'1px solid var(--border)'}}>
-        {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
+        {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} isMastering={!!(track.revisions?.some(r=>r.is_active&&processingMasters[r.id]))} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
       </div>
     </div>
     <div className="ps-controls-bar">
