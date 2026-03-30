@@ -95,7 +95,7 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
 
             log("step 3: initialising DawDreamer RenderEngine...")
             import dawdreamer as daw
-            engine = daw.RenderEngine(sample_rate, 8192)
+            engine = daw.RenderEngine(sample_rate, 512)
             log(f"step 3: engine ready in {time.time()-t0:.1f}s")
 
             audio_2d = np.ascontiguousarray(audio_data.T, dtype=np.float32)
@@ -114,8 +114,11 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
                 (playback, [])
             ])
 
-            log(f"step 6: rendering {num_samples} samples...")
-            engine.render(num_samples)
+            # Round to nearest block size — DawDreamer requires multiple of block size
+            block_size = 512
+            num_render = ((num_samples + block_size - 1) // block_size) * block_size
+            log(f"step 6: rendering {num_render} samples (padded from {num_samples})...")
+            engine.render(num_render)
             log(f"step 6: render complete in {time.time()-t0:.1f}s")
 
             out_audio = engine.get_audio()
