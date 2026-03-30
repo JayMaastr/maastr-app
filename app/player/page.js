@@ -564,9 +564,7 @@ const [showInvite,setShowInvite]=useState(false);
 .td-master-clear{margin-top:6px;background:transparent;border:none;color:var(--text-muted);font-size:10px;cursor:pointer;padding:2px 0;}
 .td-master-clear:hover{color:var(--amber);}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
-    <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><a href="/" className="back">← Dashboard</a></div>
-
-      {user&&<NotificationCenter user={user}/>}<div style={{position:'relative',marginLeft:'auto',flexShrink:0}}>
+    <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><a href="/" className="logo">maastr<em>.</em></a><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||'…'}</span></div><div style={{display:'flex',alignItems:'center',gap:8}}><a href="/" className="back">← Dashboard</a>{user&&<NotificationCenter user={user}/>}<div style={{position:'relative'}}>
         <div style={{width:32,height:32,borderRadius:'50%',background:'var(--surf3)',border:'1px solid var(--border2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'var(--t2)',cursor:'pointer'}} onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
         {showMenu&&(<>
           <div style={{position:'fixed',inset:0,zIndex:99}} onClick={()=>setShowMenu(false)}/>
@@ -583,7 +581,7 @@ const [showInvite,setShowInvite]=useState(false);
             </div>
           </div>
         </>)}
-      </div>    <div className="ps-waveform-bar">
+      </div></div></div>    <div className="ps-waveform-bar">
       {activeTrack?(<><div className="ps-track-info"><span className="ps-track-name">{activeTrack.title}</span>{activeRevision&&<span className="ps-rev-badge">{activeRevision.label||'v1'}</span>}{(activeRevision?.tone_label||activeTrack.tone_label)&&<span className="ps-tone-badge">{activeRevision?.tone_label||activeTrack.tone_label}</span>}</div><div className="ps-waveform"><Waveform peaks={activeTrack.peaks} progress={progress} notes={notes} duration={duration} onSeek={handleSeek}/><div className="ps-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div></>):(<div className="ps-no-track-top">Tap a track to start listening</div>)}
     </div>
     <div className="page">
