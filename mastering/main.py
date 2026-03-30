@@ -98,7 +98,7 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
             engine = daw.RenderEngine(sample_rate, 8192)
             log(f"step 3: engine ready in {time.time()-t0:.1f}s")
 
-            audio_2d = audio_data.T.astype(np.float32)
+            audio_2d = np.ascontiguousarray(audio_data.T, dtype=np.float32)
             if audio_2d.shape[0] == 1:
                 audio_2d = np.vstack([audio_2d, audio_2d])
 
