@@ -83,7 +83,7 @@ def prove_dawdreamer(audio_data, sample_rate):
     engine = daw.RenderEngine(sample_rate, 512)
     playback = engine.make_playback_processor("playback", test_2d)
     engine.load_graph([(playback, [])])
-    engine.render(test_frames)
+    engine.render(test_frames / sample_rate)
     out = engine.get_audio()  # shape: (channels, frames)
     in_peak  = float(np.max(np.abs(test_2d)))
     out_peak = float(np.max(np.abs(out)))
