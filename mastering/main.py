@@ -1,5 +1,7 @@
-# maastr mastering service v4.0
-# Built directly from DawDreamer official docs: https://dirt.design/DawDreamer/
+# maastr mastering service v4.1
+# DawDreamer-native processing:
+#   EQ: make_filter_processor high_shelf inside the engine graph
+#   Gain: numpy multiply on get_audio() output (scalar — effectively free)
 import os, base64, tempfile, subprocess, threading, time
 from pathlib import Path
 import numpy as np
@@ -16,10 +18,19 @@ SUPABASE_URL = os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 PORT         = int(os.environ.get('PORT', 3002))
 
+# (gain_db, shelf_db)
+# Loud=+4dB | Normal=+2dB | Gentle=+1dB
+# Bright=+5dB high shelf at 8kHz | Warm=-5dB | Neutral=0dB
 PRESETS = {
-    'W+L': (4.0, 0.18), 'N+L': (4.0, 0.07), 'B+L': (4.0, 0.04),
-    'W+N': (1.5, 0.14), 'N+N': (1.5, 0.04), 'B+N': (1.5, 0.02),
-    'W+G': (0.5, 0.10), 'N+G': (0.5, 0.02), 'B+G': (0.5, 0.01),
+    'W+L': (4.0, -5.0),
+    'N+L': (4.0,  0.0),
+    'B+L': (4.0,  5.0),
+    'W+N': (2.0, -5.0),
+    'N+N': (2.0,  0.0),
+    'B+N': (2.0,  5.0),
+    'W+G': (1.0, -5.0),
+    'N+G': (1.0,  0.0),
+    'B+G': (1.0,  5.0),
 }
 
 def log(msg):
@@ -92,7 +103,7 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
     t0 = time.time()
     try:
         log(f"START master_id={master_id[:8]} preset={preset}")
-        gain_db, _ = PRESETS.get(preset, (1.5, 0.04))
+        gain_db, shelf_db = PRESETS.get(preset, (2.0, 0.0))
         gain_linear = float(10 ** (gain_db / 20.0))
 
         # Step 1: download
@@ -108,67 +119,71 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
             del r
 
             # Step 2: read WAV
-            # sf.read(always_2d=True) returns (frames, channels) shaped array
+            # sf.read always_2d=True -> (frames, channels)
             log("step 2: reading WAV...")
             audio_data, sample_rate = sf.read(src_wav, always_2d=True, dtype='float32')
-            num_frames  = audio_data.shape[0]   # e.g. 14731097
-            num_channels = audio_data.shape[1]  # e.g. 2
-            duration_sec = num_frames / sample_rate  # e.g. 333.8 seconds
+            num_frames   = audio_data.shape[0]
+            num_channels = audio_data.shape[1]
+            duration_sec = num_frames / sample_rate
             log(f"step 2: {num_frames} frames, {num_channels}ch, {sample_rate}Hz, {duration_sec:.1f}s")
 
-            # Step 3: DawDreamer passthrough
+            # Step 3: DawDreamer processing
             # Per docs: make_playback_processor expects (channels, frames)
-            # sf.read gives (frames, channels), so .T is required
-            # np.ascontiguousarray ensures C-contiguous memory for pybind11
-            log("step 3: running DawDreamer passthrough...")
+            log(f"step 3: DawDreamer — gain={gain_db}dB shelf={shelf_db}dB@8kHz...")
             import dawdreamer as daw
 
             engine = daw.RenderEngine(sample_rate, 512)
             audio_chf = np.ascontiguousarray(audio_data.T, dtype=np.float32)  # (channels, frames)
             playback = engine.make_playback_processor("playback", audio_chf)
-            engine.load_graph([(playback, [])])
 
-            # engine.render() takes SECONDS as a float (not sample count)
+            if shelf_db != 0.0:
+                # DawDreamer built-in high shelf filter — runs inside JUCE C++ engine
+                # make_filter_processor(name, mode, freq_hz, q, gain_db)
+                shelf = engine.make_filter_processor("shelf", "high_shelf", 8000.0, 0.707, shelf_db)
+                engine.load_graph([
+                    (playback, []),
+                    (shelf,    [playback.get_name()])
+                ])
+            else:
+                engine.load_graph([(playback, [])])
+
+            # engine.render() takes SECONDS as a float
             engine.render(duration_sec)
+            out = engine.get_audio()  # (channels, frames)
 
-            out_audio = engine.get_audio()  # shape: (channels, frames)
-            log(f"step 3: DawDreamer DONE in {time.time()-t0:.1f}s | "
+            log(f"step 3: done in {time.time()-t0:.1f}s | "
                 f"in_peak={float(np.max(np.abs(audio_chf))):.4f} "
-                f"out_peak={float(np.max(np.abs(out_audio))):.4f} "
-                f"shape={out_audio.shape}")
+                f"out_peak={float(np.max(np.abs(out))):.4f} shape={out.shape}")
 
-            # Step 4: apply gain, write 24-bit WAV
-            # out_audio is (channels, frames) — need .T for sf.write (frames, channels)
-            log(f"step 4: applying gain {gain_db}dB ({gain_linear:.4f}x) and writing 24-bit WAV...")
-            out_gained = np.clip(out_audio.T * gain_linear, -1.0, 1.0).astype(np.float32)
+            # Step 4: apply loudness gain + write 24-bit WAV
+            # out is (channels, frames) — .T gives (frames, channels) for sf.write
+            out_gained = np.clip(out.T * gain_linear, -1.0, 1.0).astype(np.float32)
             out_wav = f"{tmpdir}/mastered.wav"
             sf.write(out_wav, out_gained, sample_rate, subtype='PCM_24')
-            log(f"step 4: wrote {Path(out_wav).stat().st_size//1024}KB in {time.time()-t0:.1f}s")
+            log(f"step 4: wrote {Path(out_wav).stat().st_size//1024}KB in {time.time()-t0:.1f}s | "
+                f"final_peak={float(np.max(np.abs(out_gained))):.4f}")
 
-            # Peaks for waveform display
             mono = np.abs(out_gained.mean(axis=1))
             bucket = max(1, len(mono) // 800)
             peaks = [float(np.max(mono[i*bucket:(i+1)*bucket])) for i in range(800)]
 
-            # Step 5: upload WAV to GCS
+            # Step 5: upload WAV
             gcs_wav_key = f"projects/{project_id}/masters/{revision_id}/{master_id}/mastered.wav"
             log("step 5: uploading WAV to GCS...")
             audio_public_url = gcs_upload(out_wav, gcs_wav_key)
             log(f"step 5: uploaded in {time.time()-t0:.1f}s")
 
-            # Step 6: HLS encode + upload
-            log("step 6: HLS encoding...")
+            # Step 6: HLS
+            log("step 6: HLS encoding + uploading...")
             hls_dir = f"{tmpdir}/hls"
             run_ffmpeg_hls(out_wav, hls_dir)
-            log(f"step 6: HLS encoded in {time.time()-t0:.1f}s")
-
             hls_base = f"projects/{project_id}/masters/{revision_id}/{master_id}/hls"
             m3u8_url = None
             for fname in sorted(os.listdir(hls_dir)):
                 url = gcs_upload(f"{hls_dir}/{fname}", f"{hls_base}/{fname}")
                 if fname.endswith('.m3u8'):
                     m3u8_url = url
-            log(f"step 6: HLS uploaded in {time.time()-t0:.1f}s")
+            log(f"step 6: HLS done in {time.time()-t0:.1f}s")
 
             patch_supabase(master_id, {
                 'status': 'ready',
@@ -187,7 +202,7 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
 
 @app.route('/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'service': 'maastr-mastering', 'version': '4.0'})
+    return jsonify({'status': 'ok', 'service': 'maastr-mastering', 'version': '4.1'})
 
 
 @app.route('/master', methods=['POST'])
