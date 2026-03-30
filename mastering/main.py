@@ -106,11 +106,7 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
             playback = engine.make_playback_processor("playback", audio_2d)
             log(f"step 4: playback ready in {time.time()-t0:.1f}s")
 
-            # Free RAM before rendering
-            del audio_2d
-            del audio_data
-            gc.collect()
-            log("step 4: memory freed")
+            log("step 4: memory retained (C++ holds reference to audio_2d)")
 
             # Faust bypassed for speed benchmarking — gain-only passthrough
             log("step 5: bypassing Faust (passthrough benchmark)")
