@@ -68,8 +68,7 @@ def gcs_upload(local_path, gcs_key):
     ext = Path(local_path).suffix
     ct = 'audio/wav' if ext == '.wav' else 'video/mp2t' if ext == '.ts' else 'application/x-mpegURL'
     r = requests.put(
-        f'https://storage.googleapis.com/upload/storage/v1/b/{GCS_BUCKET}/o',
-        params={'uploadType': 'media', 'name': gcs_key},
+        f'https://storage.googleapis.com/{GCS_BUCKET}/{gcs_key}',
         headers={'Authorization': f'Bearer {tok}', 'Content-Type': ct},
         data=data
     )
