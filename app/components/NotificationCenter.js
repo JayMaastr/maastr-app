@@ -6,6 +6,7 @@ import { sb } from '@/lib/supabase';
 export default function NotificationCenter({ user }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [panelPos, setPanelPos] = useState({top:0,right:16});
   const [tab, setTab] = useState('new');
   const [notes, setNotes] = useState([]);
   const [uploads, setUploads] = useState([]);
@@ -113,7 +114,7 @@ export default function NotificationCenter({ user }) {
 
   return (
     <div style={{position:'relative'}} ref={panelRef}>
-      <button onClick={() => setOpen(o => !o)} title="Notifications"
+      <button onClick={()=>{const r=panelRef.current?.getBoundingClientRect();if(r)setPanelPos({top:r.bottom+8,right:window.innerWidth-r.right});setOpen(o=>!o);}} title="Notifications"
         style={{width:36,height:36,borderRadius:8,border:'1px solid var(--border2)',background:open?'var(--surf3)':'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',position:'relative',flexShrink:0}}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--t2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -127,7 +128,7 @@ export default function NotificationCenter({ user }) {
       </button>
 
       {open && (
-        <div style={{position:'absolute',top:'calc(100% + 8px)',right:0,width:360,maxWidth:'calc(100vw - 32px)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',zIndex:300,overflow:'hidden'}}>
+        <div style={{position:'fixed',top:panelPos.top,right:panelPos.right,width:360,maxWidth:'calc(100vw - 32px)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',zIndex:300,overflow:'hidden'}}>
           <div style={{display:'flex',borderBottom:'1px solid var(--border)',background:'var(--surf2)'}}>
             {[{key:'new',label:'New',count:unreadNotes.length},{key:'read',label:'Read',count:readNotes.length},{key:'uploads',label:'Uploads',count:activeUploads.length}].map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
