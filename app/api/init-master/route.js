@@ -46,7 +46,7 @@ export async function POST(req) {
     fetch(base + '/api/request-master', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ revisionId: revision.id, projectId: track.project_id || projectId, preset: track.tone_setting ?? 4 }),
+      body: JSON.stringify({ revisionId: revision.id, projectId: track.project_id || projectId, preset: track.tone_label ?? 'N+N' }),
     }).catch(e => console.error('[init-master] request-master error:', e));
     return NextResponse.json({ status: 'ok', revisionId: revision.id });
   } catch (e) {
