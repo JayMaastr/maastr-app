@@ -1,5 +1,4 @@
 'use client';
-import NotificationCenter from '@/app/components/NotificationCenter';
 import { useEffect, useState, useRef } from 'react';
 import { useUpload } from '@/app/context/UploadContext';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
@@ -531,7 +530,7 @@ export default function Dashboard(){
           <div className="logo">maastr<em>.</em></div>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:11,color:'var(--t3)'}}>{user?.email}</span>
-            <NotificationCenter user={user}/>
+            
             <div style={{position:'relative'}}>
             <div className="avatar" onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
             {showMenu&&(<>
