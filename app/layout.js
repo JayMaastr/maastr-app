@@ -1,7 +1,8 @@
 import { DM_Serif_Display, DM_Mono } from 'next/font/google';
+import { UploadProvider } from '@/app/context/UploadContext';
 
-const dmSerif = DM_Serif_Display({ subsets: ['latin'], weight: '400', variable: '--font-serif' });
-const dmMono = DM_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono' });
+const dmSerif = DM_Serif_Display({ subsets: ['latin'], weight: '400', variable: '--font-dm-serif' });
+const dmMono = DM_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-dm-mono' });
 
 export const metadata = {
   title: 'maastr',
@@ -22,7 +23,9 @@ export default function RootLayout({ children }) {
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body className={`${dmSerif.variable} ${dmMono.variable}`}>
-        {children}
+        <UploadProvider>
+          {children}
+        </UploadProvider>
       </body>
     </html>
   );
