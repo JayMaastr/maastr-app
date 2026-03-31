@@ -128,7 +128,7 @@ export default function NotificationCenter({ user }) {
       </button>
 
       {open && (
-        <div style={{position:'fixed',top:panelPos.top,right:panelPos.right,width:360,maxWidth:'calc(100vw - 32px)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',zIndex:300,overflow:'hidden'}}>
+        <div style={{position:'absolute',top:40,right:0,width:360,maxWidth:'calc(100vw - 32px)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',zIndex:300,overflow:'hidden'}}>
           <div style={{display:'flex',borderBottom:'1px solid var(--border)',background:'var(--surf2)'}}>
             {[{key:'new',label:'New',count:unreadNotes.length},{key:'read',label:'Read',count:readNotes.length},{key:'uploads',label:'Uploads',count:activeUploads.length}].map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
@@ -175,7 +175,7 @@ export default function NotificationCenter({ user }) {
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                         <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.label||u.projectName}</div>
                         <div style={{fontFamily:'var(--fm)',fontSize:10,color:u.status==='done'?'#4caf50':'var(--amber)',fontWeight:600}}>
-                          {u.status==='done'?'â Done':u.done+'%'}
+                          {u.status==='done'?'Ã¢ÂÂ Done':u.done+'%'}
                         </div>
                       </div>
                       <div style={{height:4,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
