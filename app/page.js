@@ -1,6 +1,7 @@
 'use client';
 import NotificationCenter from '@/app/components/NotificationCenter';
 import { useEffect, useState, useRef } from 'react';
+import { useUpload } from '@/app/context/UploadContext';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 
 const TONES = [
@@ -50,7 +51,7 @@ function WaveformCanvas({peaks}) {
   return <canvas ref={ref} style={{display:'block',width:'100%',height:'100%'}}/>;
 }
 
-function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const [hov,setHov]=useState(null);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span>← Warmer</span><span style={{margin:'0 auto',color:'#e8a020',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter →</span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);const isActive=i===value;return(<button key={i} className={'tgm-cell'+(isActive?' active':'')+(used?' used':'')} style={{background:TONE_BG[i],borderColor:isActive||i===hov?TONE_BORDER[i]:'rgba(0,0,0,0.2)',borderWidth:isActive?'2.5px':'1.5px',opacity:used?0.55:1,cursor:used?'not-allowed':'pointer'}} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}>{used&&<svg width="18" height="18" viewBox="0 0 18 18" style={{position:'absolute',pointerEvents:'none'}}><line x1="3" y1="3" x2="15" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/><line x1="15" y1="3" x2="3" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/></svg>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'#4a4945',marginTop:6}}>✓ Already mastered — crossed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
+function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const [hov,setHov]=useState(null);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span> Warmer</span><span style={{margin:'0 auto',color:'#e8a020',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter </span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);const isActive=i===value;return(<button key={i} className={'tgm-cell'+(isActive?' active':'')+(used?' used':'')} style={{background:TONE_BG[i],borderColor:isActive||i===hov?TONE_BORDER[i]:'rgba(0,0,0,0.2)',borderWidth:isActive?'2.5px':'1.5px',opacity:used?0.55:1,cursor:used?'not-allowed':'pointer'}} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}>{used&&<svg width="18" height="18" viewBox="0 0 18 18" style={{position:'absolute',pointerEvents:'none'}}><line x1="3" y1="3" x2="15" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/><line x1="15" y1="3" x2="3" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/></svg>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'#4a4945',marginTop:6}}> Already mastered  crossed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
 function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, onSetAll}) {
   const [showTone,setShowTone]=useState(false);
   const [suggestions,setSuggestions]=useState([]);
@@ -87,7 +88,7 @@ function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, o
             <input className="trv2-name-input" value={track.name}
               onChange={e=>handleNameChange(e.target.value)}
               onFocus={()=>{if(existingTracks?.length){setSuggestions(existingTracks);setShowSug(true);}}}
-              placeholder={existingTracks?.length?"Type or pick existing track…":"Track name"}
+              placeholder={existingTracks?.length?"Type or pick existing track":"Track name"}
             />
             {showSug&&suggestions.length>0&&(
               <div className="trv2-suggestions">
@@ -104,11 +105,11 @@ function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, o
               <button className={`tone-btn ${showTone?'active':''}`} onClick={()=>setShowTone(v=>!v)}>TONE GRID</button>
               <span style={{fontSize:9,color:'var(--amber)',letterSpacing:'.04em',whiteSpace:'nowrap',textAlign:'center'}}>{TONES[track.tone]?.label||'Neutral + Normal'}</span>
             </div>
-          <button className="trv2-remove" onClick={onRemove}>×</button>
+          <button className="trv2-remove" onClick={onRemove}></button>
         </div>
         <div className="trv2-filename">
           {track.isRevision&&<span className="revision-badge">revision</span>}
-          {track.peaksComputed&&<span className="revision-badge" style={{background:'rgba(80,200,120,.1)',color:'#50c878',borderColor:'rgba(80,200,120,.3)'}}>waveform ✓</span>}
+          {track.peaksComputed&&<span className="revision-badge" style={{background:'rgba(80,200,120,.1)',color:'#50c878',borderColor:'rgba(80,200,120,.3)'}}>waveform </span>}
           <em>{track.file.name}</em>
           <span className="trv2-size">{track.file.size<1048576?(track.file.size/1024).toFixed(0)+' KB':(track.file.size/1024/1024).toFixed(1)+' MB'}</span>
         </div>
@@ -307,17 +308,17 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount,onRefresh}){
               )}            </div>
             <div className="edit-actions">
           <button className="edit-cancel" onClick={()=>{setEditTitle(project.title||'');setEditArtist(project.artist||'');setEditing(false);}}>Cancel</button>
-          <button className="edit-save" disabled={!editTitle.trim()||saving} onClick={saveEdit}>{saving?'Saving…':'Save'}</button>
+          <button className="edit-save" disabled={!editTitle.trim()||saving} onClick={saveEdit}>{saving?'Saving':'Save'}</button>
         </div>
       </div>
       <div className="card-wave"><WaveformCanvas peaks={project.peaks}/></div>
-      <div className="card-meta" style={{position:'relative'}}>{unreadCount>0&&<span style={{position:'absolute',top:-8,right:0,background:'var(--amber)',color:'#000',borderRadius:99,fontSize:9,fontWeight:700,fontFamily:'var(--fm)',minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{unreadCount}</span>}<span>{isPending?tc+' uploading…':tc+' track'+(tc!==1?'s':'')}</span><span>{dateStr}</span></div>
+      <div className="card-meta" style={{position:'relative'}}>{unreadCount>0&&<span style={{position:'absolute',top:-8,right:0,background:'var(--amber)',color:'#000',borderRadius:99,fontSize:9,fontWeight:700,fontFamily:'var(--fm)',minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{unreadCount}</span>}<span>{isPending?tc+' uploading':tc+' track'+(tc!==1?'s':'')}</span><span>{dateStr}</span></div>
     </div>
   );
   if(confirmDelete)return(
     <div className="card confirming" style={{animationDelay:idx*60+'ms'}}>
       <div className="confirm-overlay">
-        <div className="confirm-title">Delete “{project.title}”?</div>
+        <div className="confirm-title">Delete {project.title}?</div>
         <div className="confirm-sub">Permanently deletes {tc} track{tc!==1?'s':''} and all files.</div>
         <div className="confirm-actions">
           <button className="btn-cancel-sm" onClick={()=>setConfirmDelete(false)}>Keep it</button>
@@ -333,11 +334,11 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount,onRefresh}){
         <div className="card-art-full" style={{position:'relative'}}>
             {isPending&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.65)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:2,borderRadius:'inherit',gap:8}}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{animation:'spin 1.2s linear infinite'}}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-              <span style={{fontFamily:'var(--fm)',fontSize:9,color:'var(--amber)',letterSpacing:'.08em',textTransform:'uppercase',fontWeight:700}}>Processing…</span>
+              <span style={{fontFamily:'var(--fm)',fontSize:9,color:'var(--amber)',letterSpacing:'.08em',textTransform:'uppercase',fontWeight:700}}>Processing</span>
             </div>}
           {project.image_url
             ? <img src={project.image_url} alt={project.title}/>
-            : <div className="card-art-placeholder">{project.title?.[0]?.toUpperCase()||'♪'}</div>}
+            : <div className="card-art-placeholder">{project.title?.[0]?.toUpperCase()||''}</div>}
         </div>
         <div style={{padding:'12px 14px 0',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
         <div className="card-titles">
@@ -386,6 +387,7 @@ export default function Dashboard(){
   const [projArtist,setProjArtist]=useState('');
   const [tracks,setTracks]=useState([]);
   const [creating,setCreating]=useState(false);
+  const { startUploads } = useUpload();
   const [statusMsg,setStatusMsg]=useState('');
   const [dragging,setDragging]=useState(false);
   const [deleting,setDeleting]=useState(null);
@@ -495,57 +497,17 @@ export default function Dashboard(){
       }
       setTimeout(()=>window.nc_openToUploads&&window.nc_openToUploads(),80);
 
-      // Upload all files in PARALLEL using XHR for real byte-level progress
-      function xhrUpload(file,url,ncId,usePut){
-        return new Promise((resolve,reject)=>{
-          const xhr=new XMLHttpRequest();
-          xhr.open(usePut?'PUT':'POST',url);
-          xhr.setRequestHeader('Content-Type',file.type||'audio/wav');
-          xhr.upload.onprogress=e=>{
-            if(e.lengthComputable&&window.nc_updateUpload){
-              window.nc_updateUpload(ncId,Math.round(e.loaded/e.total*100),100);
-            }
-          };
-          xhr.onload=()=>{
-            try{
-              const result=JSON.parse(xhr.responseText);
-              if(window.nc_updateUpload)window.nc_updateUpload(ncId,100,100);
-              if(window.nc_finishUpload)window.nc_finishUpload(ncId);
-              resolve(result);
-            }catch(e){resolve({});}
-          };
-          xhr.onerror=()=>reject(new Error('Network error uploading '+file.name));
-          xhr.send(file);
-        });
-      }
-
-      const uploadResults=await Promise.all(trackSnapshot.map(async (t,i)=>{
-        const safeName=sanitizeFilename(t.file.name);
-        // Get GCS signed upload URL
-        const gcsRes=await fetch('/api/gcs-upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId:proj.id,fileName:safeName,contentType:t.file.type||'audio/wav'})});
-        const gcsData=await gcsRes.json();
-        if(!gcsData.uploadUrl) return null;
-        try{
-          await xhrUpload(t.file,gcsData.uploadUrl,_ncIds[i],true);
-          const url=gcsData.publicUrl;
-          return url?{...t,url}:null;
-        }catch(e){console.error('Upload failed:',t.name,e);return null;}
-      }));
-
-      // Insert tracks into DB
-      const toneLabels=['W+L','N+L','B+L','W+N','N+N','B+N','W+G','N+G','B+G'];
-      for(let i=0;i<trackSnapshot.length;i++){
-        const t=trackSnapshot[i];const res=uploadResults[i];if(!res)continue;
-        const {data:newTrack}=await sb.from('tracks').insert({project_id:proj.id,title:t.name,audio_url:res.url,position:i,tone_setting:t.tone||4,tone_label:toneLabels[t.tone||4],duration:0}).select('id').single();
-        // Fire peak extraction immediately — returns 202, runs in background
-        if(newTrack?.id){
-          fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:newTrack.id,projectId:proj.id,audioUrl:res.url})}).catch(()=>{});
-          fetch('/api/trigger-encode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:newTrack.id,projectId:proj.id,audioUrl:res.url})}).catch(()=>{});
-          fetch('/api/init-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:newTrack.id,projectId:proj.id})}).catch(e=>console.error('[init-master]',e));
-        }
-      }
-
-      // Peaks are extracted server-side via /api/process
+      // Delegate uploads to global UploadContext (survives navigation)
+        await startUploads(
+          trackSnapshot.map((t) => ({
+            file: t.file,
+            name: t.name || t.file.name,
+            tone_setting: t.tone_setting,
+            tone_label: t.tone_label,
+          })),
+          proj.id,
+          _ncIds
+        );
       loadProjects();
       setStatusMsg('');
     }catch(e){
@@ -610,7 +572,7 @@ export default function Dashboard(){
           </button>
         </div>
         <div className="grid">
-          {loading?<div className="empty"><div className="empty-title">Loading…</div></div>
+          {loading?<div className="empty"><div className="empty-title">Loading</div></div>
           :projects.length===0?(<div className="empty"><div className="empty-title">No projects yet.</div><p style={{fontSize:12,marginBottom:20}}>Create your first mastering project.</p><button className="create-btn" onClick={()=>setShowModal(true)}>New Project</button></div>)
           :projects.filter(p=>{if(!searchTerm.trim())return true;const q=searchTerm.trim().toLowerCase();return(p.title||'').toLowerCase().includes(q)||(p.artist||'').toLowerCase().includes(q);}).map((p,idx)=>(<ProjectCard key={p.id} project={p} idx={idx} onDelete={deleteProject} onSave={handleSave}/>))}
         </div>
@@ -633,9 +595,9 @@ export default function Dashboard(){
               <div className={`dropzone ${dragging?'over':''} ${tracks.length>0?'has-files':''}`}
                 onDragOver={handleDragOver} onDragEnter={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
                 onClick={()=>document.getElementById('file-upload').click()}>
-                <div style={{fontSize:28,marginBottom:8}}>🎵</div>
+                <div style={{fontSize:28,marginBottom:8}}></div>
                 {tracks.length===0
-                  ?<><strong>Drop WAV / MP3 files here</strong><br/><span style={{fontSize:11,opacity:.6}}>or tap to browse — multiple files OK</span></>
+                  ?<><strong>Drop WAV / MP3 files here</strong><br/><span style={{fontSize:11,opacity:.6}}>or tap to browse  multiple files OK</span></>
                   :<><strong style={{color:'var(--amber)'}}>{tracks.length} file{tracks.length!==1?'s':''} added</strong><br/><span style={{fontSize:11,opacity:.6}}>Drop more or tap to add</span></>}
                 <input id="file-upload" type="file" accept=".wav,.mp3,.aiff,.aif,.flac,.m4a,audio/*" multiple style={{display:'none'}} onChange={e=>{addFilesWithPeaks(e.target.files);e.target.value='';}}/>
               </div>
@@ -649,7 +611,7 @@ export default function Dashboard(){
                       showSetAll={tracks.length>1}
                       onSetAll={setAllTones}/>
                   ))}
-                  {!allNamed&&<div className="name-required">⚠ Please name all tracks before creating.</div>}
+                  {!allNamed&&<div className="name-required"> Please name all tracks before creating.</div>}
                 </div>
               )}
             </div>
@@ -658,7 +620,7 @@ export default function Dashboard(){
               <div style={{display:'flex',gap:10,flex:1,justifyContent:'flex-end'}}>
                 <button className="btn-cancel" disabled={creating} onClick={closeModal}>Cancel</button>
                 <button className="btn-create" disabled={!projName||tracks.length===0||!allNamed||creating} onClick={createProject}>
-                  {creating?(statusMsg||'Creating…'):`Create (${tracks.length} track${tracks.length!==1?'s':''})`}
+                  {creating?(statusMsg||'Creating'):`Create (${tracks.length} track${tracks.length!==1?'s':''})`}
                 </button>
               </div>
             </div>
@@ -673,8 +635,8 @@ export default function Dashboard(){
           <div style={{fontSize:12,color:'var(--t2)',marginBottom:16,lineHeight:1.6}}>Found a bug or something not working? Let us know.</div>
           {reportSent
             ? <div style={{textAlign:'center',padding:'20px 0'}}>
-                <div style={{fontSize:24,marginBottom:8}}>✓</div>
-                <div style={{fontSize:13,color:'var(--amber)'}}>Thanks — we got it.</div>
+                <div style={{fontSize:24,marginBottom:8}}></div>
+                <div style={{fontSize:13,color:'var(--amber)'}}>Thanks  we got it.</div>
                 <button onClick={()=>{setShowReport(false);setReportSent(false);setReportMsg('');}} style={{marginTop:16,padding:'8px 20px',borderRadius:8,border:'1px solid var(--border2)',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}}>Close</button>
               </div>
             : <>
