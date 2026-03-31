@@ -114,7 +114,7 @@ export default function NotificationCenter({ user }) {
 
   return (
     <div style={{position:'relative'}} ref={panelRef}>
-      <button onClick={()=>{const r=panelRef.current?.getBoundingClientRect();if(r)setPanelPos({top:r.bottom+8,right:window.innerWidth-r.right});setOpen(o=>!o);}} title="Notifications"
+      <button onClick={()=>{const r=panelRef.current?.getBoundingClientRect();if(r)setPanelPos({top:r.bottom+4,right:window.innerWidth-r.right});setOpen(o=>!o);}} title="Notifications"
         style={{width:36,height:36,borderRadius:8,border:'1px solid var(--border2)',background:open?'var(--surf3)':'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',position:'relative',flexShrink:0}}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--t2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -175,7 +175,7 @@ export default function NotificationCenter({ user }) {
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                         <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.label||u.projectName}</div>
                         <div style={{fontFamily:'var(--fm)',fontSize:10,color:u.status==='done'?'#4caf50':'var(--amber)',fontWeight:600}}>
-                          {u.status==='done'?'✓ Done':u.done+'%'}
+                          {u.status==='done'?'â Done':u.done+'%'}
                         </div>
                       </div>
                       <div style={{height:4,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
