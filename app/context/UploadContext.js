@@ -15,6 +15,7 @@ export function UploadProvider({ children }) {
   function updateUpload(ncId, progress, total) {
     const pct = total > 0 ? Math.round(progress / total * 100) : 0;
     setUploads(prev => ({ ...prev, [ncId]: { ...prev[ncId], progress: pct } }));
+    if (activeRef.current[ncId]) activeRef.current[ncId].pct = pct;
     if (window.nc_updateUpload) window.nc_updateUpload(ncId, pct, 100);
   }
 
@@ -24,6 +25,19 @@ export function UploadProvider({ children }) {
     delete activeRef.current[ncId];
   }
 
+
+  // Allow newly mounted NC to re-sync active uploads
+  useEffect(() => {
+    window.nc_requestSync = () => {
+      const active = activeRef.current || {};
+      Object.entries(active).forEach(([ncId, u]) => {
+        if (u.done) return;
+        if (window.nc_startUpload) window.nc_startUpload(ncId, u.name, u.projectId, '', 100);
+        if (u.pct > 0 && window.nc_updateUpload) window.nc_updateUpload(ncId, u.pct, 100);
+      });
+    };
+    return () => { delete window.nc_requestSync; };
+  }, []);
   function xhrUpload(file, url, ncId) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -45,7 +59,7 @@ export function UploadProvider({ children }) {
   const startUploads = useCallback(async (trackList, projectId, ncIds) => {
     const initial = {};
     trackList.forEach((t, i) => {
-      initial[ncIds[i]] = { name: t.name || t.file.name, progress: 0, done: false };
+      initial[ncIds[i]] = { name: t.name || t.file.name, projectId, progress: 0, done: false };
     });
     setUploads(prev => ({ ...prev, ...initial }));
 
