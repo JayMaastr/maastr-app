@@ -541,6 +541,7 @@ export default function Dashboard(){
         if(newTrack?.id){
           fetch('/api/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:newTrack.id,projectId:proj.id,audioUrl:res.url})}).catch(()=>{});
           fetch('/api/trigger-encode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:newTrack.id,projectId:proj.id,audioUrl:res.url})}).catch(()=>{});
+          fetch('/api/init-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:newTrack.id,projectId:proj.id})}).catch(e=>console.error('[init-master]',e));
         }
       }
 
