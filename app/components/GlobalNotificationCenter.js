@@ -1,8 +1,10 @@
 'use client';
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState } from 'react';
 import { sb } from '@/lib/supabase';
-import NotificationCenter from '@/app/components/NotificationCenter';
 
+// Headless component — lives in layout, never unmounts.
+// When user navigates to a page with an NC, calls nc_requestSync so
+// UploadContext re-announces any active uploads to the newly mounted NC.
 export default function GlobalNotificationCenter() {
   const [user, setUser] = useState(null);
 
@@ -16,12 +18,14 @@ export default function GlobalNotificationCenter() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (!user) return null;
-  return (
-    <div style={{position:'fixed',top:12,right:84,zIndex:200}}>
-      <Suspense fallback={null}>
-        <NotificationCenter user={user} />
-      </Suspense>
-    </div>
-  );
+  useEffect(() => {
+    if (!user) return;
+    // Give the page's NC time to mount and register its handlers, then sync
+    const t = setTimeout(() => {
+      if (window.nc_requestSync) window.nc_requestSync();
+    }, 150);
+    return () => clearTimeout(t);
+  }, [user]);
+
+  return null;
 }
