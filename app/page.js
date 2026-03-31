@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useUpload } from '@/app/context/UploadContext';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
+import NotificationCenter from '@/app/components/NotificationCenter';
 
 const TONES = [
   {label:'Warm + Loud',   short:'W+L', desc:'Heavy low end, maximum punch. Metal, hip-hop, EDM.'},
@@ -530,7 +531,7 @@ export default function Dashboard(){
           <div className="logo">maastr<em>.</em></div>
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <span style={{fontSize:11,color:'var(--t3)'}}>{user?.email}</span>
-            
+            {user&&<NotificationCenter user={user}/>}
             <div style={{position:'relative'}}>
             <div className="avatar" onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
             {showMenu&&(<>
