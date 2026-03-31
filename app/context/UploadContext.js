@@ -59,7 +59,7 @@ export function UploadProvider({ children }) {
         const gcsRes = await fetch('/api/gcs-upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: t.file.name, contentType: t.file.type || 'audio/wav', projectId }),
+          body: JSON.stringify({ fileName: t.file.name, contentType: t.file.type || 'audio/wav', projectId }),
         });
         const gcsData = await gcsRes.json();
         if (!gcsData.uploadUrl) throw new Error('No upload URL');
