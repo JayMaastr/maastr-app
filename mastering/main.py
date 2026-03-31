@@ -1,7 +1,7 @@
 # maastr mastering service v4.1
 # DawDreamer-native processing:
 #   EQ: make_filter_processor high_shelf inside the engine graph
-#   Gain: numpy multiply on get_audio() output (scalar — effectively free)
+#   Gain: numpy multiply on get_audio() output (scalar â effectively free)
 import os, base64, tempfile, subprocess, threading, time
 from pathlib import Path
 import numpy as np
@@ -28,9 +28,9 @@ PRESETS = {
     'W+N': (2.0, -5.0),
     'N+N': (2.0,  0.0),
     'B+N': (2.0,  5.0),
-    'W+G': (1.0, -5.0),
-    'N+G': (1.0,  0.0),
-    'B+G': (1.0,  5.0),
+    'W+S': (1.0, -5.0),
+    'N+S': (1.0,  0.0),
+    'B+S': (1.0,  5.0),
 }
 
 def log(msg):
@@ -128,14 +128,14 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
 
             # Step 3: DawDreamer processing
             # Per docs: make_playback_processor expects (channels, frames)
-            log(f"step 3: DawDreamer — gain={gain_db}dB shelf={shelf_db}dB@8kHz (100% inside engine)...")
+            log(f"step 3: DawDreamer â gain={gain_db}dB shelf={shelf_db}dB@8kHz (100% inside engine)...")
             import dawdreamer as daw
 
             engine = daw.RenderEngine(sample_rate, 512)
             audio_chf = np.ascontiguousarray(audio_data.T, dtype=np.float32)  # (channels, frames)
             playback = engine.make_playback_processor("playback", audio_chf)
 
-            # Gain node — Faust processor inside DawDreamer engine
+            # Gain node â Faust processor inside DawDreamer engine
             gain_proc = engine.make_faust_processor("gain")
             gain_proc.set_dsp_string(
                 f"import(\"stdfaust.lib\"); "
@@ -143,7 +143,7 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
                 f"process = _*gain, _*gain;"
             )
 
-            # Build graph: playback [→ shelf if EQ] → gain → output
+            # Build graph: playback [â shelf if EQ] â gain â output
             if shelf_db != 0.0:
                 shelf = engine.make_filter_processor("shelf", "high_shelf", 8000.0, 0.707, shelf_db)
                 engine.load_graph([
@@ -159,13 +159,13 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
 
             # engine.render() takes SECONDS as a float
             engine.render(duration_sec)
-            out = engine.get_audio()  # (channels, frames) — already processed by DawDreamer
+            out = engine.get_audio()  # (channels, frames) â already processed by DawDreamer
 
             log(f"step 3: done in {time.time()-t0:.1f}s | "
                 f"in_peak={float(np.max(np.abs(audio_chf))):.4f} "
                 f"out_peak={float(np.max(np.abs(out))):.4f} shape={out.shape}")
 
-            # Step 4: write 24-bit WAV — no post-processing, DawDreamer output direct to disk
+            # Step 4: write 24-bit WAV â no post-processing, DawDreamer output direct to disk
             out_gained = np.clip(out.T, -1.0, 1.0).astype(np.float32)  # clip only, no gain
             out_wav = f"{tmpdir}/mastered.wav"
             sf.write(out_wav, out_gained, sample_rate, subtype='PCM_24')
