@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useRef, useState, useCallback } from 'react';
+import { createContext, useContext, useRef, useState, useCallback, useEffect } from 'react';
 import { sb } from '@/lib/supabase';
 
 const UploadContext = createContext(null);
