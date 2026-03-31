@@ -15,7 +15,7 @@ export function UploadProvider({ children }) {
   function updateUpload(ncId, progress, total) {
     const pct = total > 0 ? Math.round(progress / total * 100) : 0;
     setUploads(prev => ({ ...prev, [ncId]: { ...prev[ncId], progress: pct } }));
-    if (window.nc_updateUpload) window.nc_updateUpload(ncId, progress, total);
+    if (window.nc_updateUpload) window.nc_updateUpload(ncId, pct, 100);
   }
 
   function finishUpload(ncId) {
@@ -50,7 +50,7 @@ export function UploadProvider({ children }) {
     setUploads(prev => ({ ...prev, ...initial }));
 
     if (window.nc_startUpload) {
-      trackList.forEach((t, i) => window.nc_startUpload(ncIds[i], t.name || t.file.name, projectId));
+      trackList.forEach((t, i) => window.nc_startUpload(ncIds[i], t.name || t.file.name, projectId, '', 100));
     }
 
     await Promise.all(trackList.map(async (t, i) => {
