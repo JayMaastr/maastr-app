@@ -18,8 +18,10 @@ export default function GlobalNotificationCenter() {
 
   if (!user) return null;
   return (
-    <Suspense fallback={null}>
-      <NotificationCenter user={user} />
-    </Suspense>
+    <div style={{ position: 'fixed', top: 54, right: 83, zIndex: 9999 }}>
+      <Suspense fallback={null}>
+        <NotificationCenter user={user} />
+      </Suspense>
+    </div>
   );
 }
