@@ -502,8 +502,8 @@ export default function Dashboard(){
           trackSnapshot.map((t) => ({
             file: t.file,
             name: t.name || t.file.name,
-            tone_setting: t.tone_setting,
-            tone_label: t.tone_label,
+            tone_setting: t.tone ?? 4,
+            tone_label: TONES[t.tone ?? 4]?.short ?? 'N+N',
           })),
           proj.id,
           _ncIds
