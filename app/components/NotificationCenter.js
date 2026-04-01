@@ -5,12 +5,13 @@ import { sb } from '@/lib/supabase';
 
 export default function NotificationCenter({ user }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [panelPos, setPanelPos] = useState({top:0,right:16});
-  const [tab, setTab] = useState('new');
   const [notes, setNotes] = useState([]);
   const [uploads, setUploads] = useState([]);
+  const [masters, setMasters] = useState([]);
+  const [tab, setTab] = useState('new');
+  const [open, setOpen] = useState(false);
   const panelRef = useRef(null);
+  const trackedMasterIds = useRef(new Set());
 
   const loadNotes = useCallback(async () => {
     if (!user) return;
@@ -29,8 +30,36 @@ export default function NotificationCenter({ user }) {
     const sub = sb.channel('nc-notes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notes' }, () => loadNotes())
       .subscribe();
-    return () => sub.unsubscribe();
+    return () => sb.removeChannel(sub);
   }, [user, loadNotes]);
+
+  // Masters realtime — updates when mastering completes
+  useEffect(() => {
+    if (!user) return;
+    const sub = sb.channel('nc-masters')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'masters' }, (payload) => {
+        const { id, status } = payload.new;
+        if (trackedMasterIds.current.has(id) && (status === 'ready' || status === 'failed')) {
+          setMasters(prev => prev.map(m => m.id === id ? { ...m, status, readyAt: Date.now() } : m));
+        }
+      })
+      .subscribe();
+    return () => sb.removeChannel(sub);
+  }, [user]);
+
+  // Auto-dismiss ready/failed masters after 8s
+  useEffect(() => {
+    const done = masters.filter(m => (m.status === 'ready' || m.status === 'failed') && m.readyAt);
+    if (!done.length) return;
+    const timers = done.map(m => {
+      const delay = Math.max(0, 8000 - (Date.now() - m.readyAt));
+      return setTimeout(() => {
+        setMasters(prev => prev.filter(p => p.id !== m.id));
+        trackedMasterIds.current.delete(m.id);
+      }, delay);
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [masters]);
 
   useEffect(() => {
     window.nc_startUpload = (uploadId, label, projectId, projectName, total) => {
@@ -39,18 +68,26 @@ export default function NotificationCenter({ user }) {
       }]);
     };
     window.nc_updateUpload = (uploadId, done, total) => {
-      setUploads(prev => prev.map(u => u.id === uploadId ? {...u, done, total} : u));
+      setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, done: Math.round(done/total*100), total } : u));
     };
     window.nc_finishUpload = (uploadId) => {
-      setUploads(prev => prev.map(u => u.id === uploadId ? {...u, status: 'done', done: u.total} : u));
+      setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, done: 100, status: 'done' } : u));
+    };
+    window.nc_startMaster = (masterId, trackName, projectId) => {
+      trackedMasterIds.current.add(masterId);
+      setMasters(prev => [...prev.filter(m => m.id !== masterId), {
+        id: masterId, trackName, projectId, status: 'processing'
+      }]);
+      setOpen(true);
+      setTab('uploads');
     };
     window.nc_openToUploads = () => { setTab('uploads'); setOpen(true); };
-    // Tell UploadContext to re-announce any active uploads to this newly mounted NC
     if (window.nc_requestSync) window.nc_requestSync();
     return () => {
       delete window.nc_startUpload;
       delete window.nc_updateUpload;
       delete window.nc_finishUpload;
+      delete window.nc_startMaster;
       delete window.nc_openToUploads;
     };
   }, []);
@@ -64,27 +101,28 @@ export default function NotificationCenter({ user }) {
 
   const unreadNotes = notes.filter(n => !n.resolved);
   const readNotes = notes.filter(n => n.resolved);
-  const activeUploads = uploads.filter(u => u.status === 'uploading');
-  const totalBadge = unreadNotes.length + activeUploads.length;
+  const activeUploads = uploads.filter(u => u.status !== 'done');
+  const activeMasters = masters.filter(m => m.status === 'processing');
+  const totalBadge = unreadNotes.length + activeMasters.length;
 
   const markAllRead = async () => {
-    if (!user || unreadNotes.length === 0) return;
-    await sb.from('notes').update({ resolved: true, resolved_at: new Date().toISOString(), resolved_by: user.id }).in('id', unreadNotes.map(n => n.id));
+    const ids = unreadNotes.map(n => n.id);
+    if (ids.length) await sb.from('notes').update({ resolved: true }).in('id', ids);
     loadNotes();
   };
 
   const goToNote = (n) => {
     setOpen(false);
-    let url = '/player?project=' + n.project_id;
-    if (n.track_id) url += '&track=' + n.track_id;
-    if (n.timestamp_sec != null) url += '&t=' + n.timestamp_sec;
+    const url = n.project_id
+      ? `/player?project=${n.project_id}${n.track_id ? `&track=${n.track_id}` : ''}`
+      : '/';
     router.push(url);
   };
 
   const goToUpload = (u) => {
     if (!u.projectId) return;
     setOpen(false);
-    router.push('/player?project=' + u.projectId);
+    router.push(`/player?project=${u.projectId}`);
   };
 
   const fmtTime = (iso) => {
@@ -109,14 +147,51 @@ export default function NotificationCenter({ user }) {
           {n.timestamp_label && <span>at {n.timestamp_label}</span>}
           <span>{fmtTime(n.created_at)}</span>
         </div>
-        {n.projects?.title && <div style={{fontSize:10,color:'var(--amber)',marginTop:2,fontFamily:'var(--fm)'}}>{n.projects.title}</div>}
+        {n.projects?.title && <div style={{fontSize:10,color:'var(--t3)',marginTop:2,fontFamily:'var(--fm)'}}>{n.projects.title}</div>}
       </div>
     </div>
   );
 
+  const masterRow = (m) => {
+    const isReady = m.status === 'ready';
+    const isFailed = m.status === 'failed';
+    const statusColor = isReady ? '#4caf50' : isFailed ? '#f44336' : 'var(--amber)';
+    const statusLabel = isReady ? '\u2713 Master ready' : isFailed ? '\u2717 Failed' : 'Mastering...';
+    return (
+      <div key={m.id} onClick={() => { setOpen(false); router.push(`/player?project=${m.projectId}`); }}
+        style={{padding:'14px',borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .15s'}}
+        onMouseEnter={e => e.currentTarget.style.background='var(--surf2)'}
+        onMouseLeave={e => e.currentTarget.style.background=''}
+      >
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:7}}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={statusColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              {isReady
+                ? <polyline points="20 6 9 17 4 12"/>
+                : isFailed
+                  ? <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>
+                  : <><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></>
+              }
+            </svg>
+            <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{m.trackName}</div>
+          </div>
+          <div style={{fontFamily:'var(--fm)',fontSize:10,color:statusColor,fontWeight:600}}>{statusLabel}</div>
+        </div>
+        <div style={{height:3,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
+          <div style={{height:'100%',borderRadius:2,background:statusColor,
+            width: isReady||isFailed ? '100%' : '45%',
+            transition: isReady||isFailed ? 'width .4s' : 'none',
+            opacity: m.status==='processing' ? 0.75 : 1
+          }}/>
+        </div>
+        <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',marginTop:5}}>AI Mastering</div>
+      </div>
+    );
+  };
+
   return (
     <div style={{position:'relative'}} ref={panelRef}>
-      <button onClick={()=>{const r=panelRef.current?.getBoundingClientRect();if(r)setPanelPos({top:r.bottom+4,right:window.innerWidth-r.right});setOpen(o=>!o);}} title="Notifications"
+      <button onClick={() => setOpen(o => !o)}
         style={{width:36,height:36,borderRadius:8,border:'1px solid var(--border2)',background:open?'var(--surf3)':'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',position:'relative',flexShrink:0}}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--t2)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -132,11 +207,15 @@ export default function NotificationCenter({ user }) {
       {open && (
         <div style={{position:'absolute',top:40,right:0,width:360,maxWidth:'calc(100vw - 32px)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',zIndex:300,overflow:'hidden'}}>
           <div style={{display:'flex',borderBottom:'1px solid var(--border)',background:'var(--surf2)'}}>
-            {[{key:'new',label:'New',count:unreadNotes.length},{key:'read',label:'Read',count:readNotes.length},{key:'uploads',label:'Uploads',count:activeUploads.length}].map(t => (
+            {[
+              {key:'new',  label:'New',     count:unreadNotes.length},
+              {key:'read', label:'Read',    count:readNotes.length},
+              {key:'uploads',label:'Uploads',count:activeUploads.length + activeMasters.length}
+            ].map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 style={{flex:1,padding:'12px 8px',border:'none',background:'transparent',color:tab===t.key?'var(--amber)':'var(--t3)',fontFamily:'var(--fm)',fontSize:11,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',borderBottom:tab===t.key?'2px solid var(--amber)':'2px solid transparent',display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
                 {t.label}
-                {t.count > 0 && <span style={{background:tab===t.key?'var(--amber)':'var(--surf3)',color:tab===t.key?'#000':'var(--t2)',borderRadius:99,fontSize:9,fontWeight:700,minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{t.count}</span>}
+                {t.count > 0 && <span style={{background:tab===t.key?'var(--amber)':'var(--surf3)',color:tab===t.key?'#000':'var(--t3)',borderRadius:99,fontSize:9,fontWeight:700,minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 3px'}}>{t.count}</span>}
               </button>
             ))}
           </div>
@@ -166,26 +245,29 @@ export default function NotificationCenter({ user }) {
 
           {tab === 'uploads' && (
             <div style={{maxHeight:400,overflowY:'auto'}}>
-              {uploads.length === 0
+              {uploads.length === 0 && masters.length === 0
                 ? <div style={{padding:32,textAlign:'center',color:'var(--t3)',fontSize:13,fontFamily:'var(--fm)'}}>No uploads yet</div>
-                : uploads.slice().reverse().map(u => (
-                    <div key={u.id} onClick={() => goToUpload(u)}
-                      style={{padding:'14px',borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .15s'}}
-                      onMouseEnter={e => e.currentTarget.style.background='var(--surf2)'}
-                      onMouseLeave={e => e.currentTarget.style.background=''}
-                    >
-                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                        <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.label||u.projectName}</div>
-                        <div style={{fontFamily:'var(--fm)',fontSize:10,color:u.status==='done'?'#4caf50':'var(--amber)',fontWeight:600}}>
-                          {u.status==='done'?'\u2713 Done':u.done+'%'}
+                : <>
+                    {masters.slice().reverse().map(m => masterRow(m))}
+                    {uploads.slice().reverse().map(u => (
+                      <div key={u.id} onClick={() => goToUpload(u)}
+                        style={{padding:'14px',borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .15s'}}
+                        onMouseEnter={e => e.currentTarget.style.background='var(--surf2)'}
+                        onMouseLeave={e => e.currentTarget.style.background=''}
+                      >
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                          <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.label||u.projectName}</div>
+                          <div style={{fontFamily:'var(--fm)',fontSize:10,color:u.status==='done'?'#4caf50':'var(--amber)',fontWeight:600}}>
+                            {u.status==='done'?'\u2713 Done':u.done+'%'}
+                          </div>
                         </div>
+                        <div style={{height:4,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
+                          <div style={{height:'100%',borderRadius:2,background:u.status==='done'?'#4caf50':'var(--amber)',width:u.done+'%',transition:'width .3s'}}/>
+                        </div>
+                        <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',marginTop:5}}>{u.projectName}</div>
                       </div>
-                      <div style={{height:4,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
-                        <div style={{height:'100%',borderRadius:2,background:u.status==='done'?'#4caf50':'var(--amber)',width:u.done+'%',transition:'width .3s'}}/>
-                      </div>
-                      <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',marginTop:5}}>{u.projectName}</div>
-                    </div>
-                  ))
+                    ))}
+                  </>
               }
             </div>
           )}
