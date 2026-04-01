@@ -40,7 +40,7 @@ export default function NotificationCenter({ user }) {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'masters' }, (payload) => {
         const { id, status } = payload.new;
         if (trackedMasterIds.current.has(id) && (status === 'ready' || status === 'failed')) {
-          setMasters(prev => prev.map(m => m.id === id ? { ...m, status, readyAt: Date.now() } : m));
+          setMasters(prev => prev.map(m => m.id === id ? { ...m, status, readyAt: Date.now(), progress: 100 } : m));
         }
       })
       .subscribe();
@@ -61,6 +61,21 @@ export default function NotificationCenter({ user }) {
     return () => timers.forEach(clearTimeout);
   }, [masters]);
 
+  // Progress ticker — advances processing masters toward 85% over their estimated duration
+  useEffect(() => {
+    const processing = masters.filter(m => m.status === 'processing' && m.startedAt);
+    if (!processing.length) return;
+    const iv = setInterval(() => {
+      setMasters(prev => prev.map(m => {
+        if (m.status !== 'processing' || !m.startedAt) return m;
+        const elapsed = Date.now() - m.startedAt;
+        const pct = Math.min(85, Math.round((elapsed / m.estimatedMs) * 85));
+        return { ...m, progress: pct };
+      }));
+    }, 250);
+    return () => clearInterval(iv);
+  }, [masters.filter(m => m.status === 'processing').length]);
+
   useEffect(() => {
     window.nc_startUpload = (uploadId, label, projectId, projectName, total) => {
       setUploads(prev => [...prev.filter(u => u.id !== uploadId), {
@@ -73,10 +88,14 @@ export default function NotificationCenter({ user }) {
     window.nc_finishUpload = (uploadId) => {
       setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, done: 100, status: 'done' } : u));
     };
-    window.nc_startMaster = (masterId, trackName, projectId) => {
+    window.nc_startMaster = (masterId, trackName, projectId, fileSize) => {
       trackedMasterIds.current.add(masterId);
+      // Estimate duration: WAV bytes → seconds at 44.1kHz stereo 16-bit → processing ms
+      const durSec = fileSize > 44 ? (fileSize - 44) / 176400 : 10;
+      const estimatedMs = Math.max(2000, 1500 + durSec * 20);
       setMasters(prev => [...prev.filter(m => m.id !== masterId), {
-        id: masterId, trackName, projectId, status: 'processing'
+        id: masterId, trackName, projectId, status: 'processing',
+        startedAt: Date.now(), estimatedMs, progress: 0
       }]);
       setOpen(true);
       setTab('uploads');
@@ -179,7 +198,7 @@ export default function NotificationCenter({ user }) {
         </div>
         <div style={{height:3,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
           <div style={{height:'100%',borderRadius:2,background:statusColor,
-            width: isReady||isFailed ? '100%' : '45%',
+            width: isReady||isFailed ? '100%' : (m.progress || 0) + '%',
             transition: isReady||isFailed ? 'width .4s' : 'none',
             opacity: m.status==='processing' ? 0.75 : 1
           }}/>
