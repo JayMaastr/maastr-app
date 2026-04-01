@@ -90,9 +90,9 @@ export default function NotificationCenter({ user }) {
     };
     window.nc_startMaster = (masterId, trackName, projectId, fileSize) => {
       trackedMasterIds.current.add(masterId);
-      // Estimate duration: WAV bytes → seconds at 44.1kHz stereo 16-bit → processing ms
-      const durSec = fileSize > 44 ? (fileSize - 44) / 176400 : 10;
-      const estimatedMs = Math.max(2000, 1500 + durSec * 20);
+      // Estimate total pipeline time from file size (empirically derived):
+      // 1.7MB (10s) → ~1.7s, 86MB (5:34) → ~11.1s  →  1200 + bytes/8500
+      const estimatedMs = Math.max(2000, 1200 + fileSize / 8500);
       setMasters(prev => [...prev.filter(m => m.id !== masterId), {
         id: masterId, trackName, projectId, status: 'processing',
         startedAt: Date.now(), estimatedMs, progress: 0
