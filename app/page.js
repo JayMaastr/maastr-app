@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useUpload } from '@/app/context/UploadContext';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 import NotificationCenter from '@/app/components/NotificationCenter';
@@ -51,7 +52,8 @@ function WaveformCanvas({peaks}) {
   return <canvas ref={ref} style={{display:'block',width:'100%',height:'100%'}}/>;
 }
 
-function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const [hov,setHov]=useState(null);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span> Warmer</span><span style={{margin:'0 auto',color:'#e8a020',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter </span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);const isActive=i===value;return(<button key={i} className={'tgm-cell'+(isActive?' active':'')+(used?' used':'')} style={{background:TONE_BG[i],borderColor:isActive||i===hov?TONE_BORDER[i]:'rgba(0,0,0,0.2)',borderWidth:isActive?'2.5px':'1.5px',opacity:used?0.55:1,cursor:used?'not-allowed':'pointer'}} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}>{used&&<svg width="18" height="18" viewBox="0 0 18 18" style={{position:'absolute',pointerEvents:'none'}}><line x1="3" y1="3" x2="15" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/><line x1="15" y1="3" x2="3" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/></svg>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'#4a4945',marginTop:6}}> Already mastered  crossed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
+function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){const router = useRouter();
+  const [hov,setHov]=useState(null);const tip=TONES[hov!=null?hov:value!=null?value:DEFAULT_TONE];return(<div className="tgm-wrap"><div className="tgm-axes"><span> Warmer</span><span style={{margin:'0 auto',color:'#e8a020',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter </span></div><div style={{display:'flex',gap:6,alignItems:'flex-start'}}><div className="tgm-row-labels"><div>Louder</div><div>Normal</div><div>Gentler</div></div><div className="tgm-grid">{TONES.map((t,i)=>{const used=usedTones.includes(i);const isActive=i===value;return(<button key={i} className={'tgm-cell'+(isActive?' active':'')+(used?' used':'')} style={{background:TONE_BG[i],borderColor:isActive||i===hov?TONE_BORDER[i]:'rgba(0,0,0,0.2)',borderWidth:isActive?'2.5px':'1.5px',opacity:used?0.55:1,cursor:used?'not-allowed':'pointer'}} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)} onClick={()=>!used&&onChange(i)} disabled={used}>{used&&<svg width="18" height="18" viewBox="0 0 18 18" style={{position:'absolute',pointerEvents:'none'}}><line x1="3" y1="3" x2="15" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/><line x1="15" y1="3" x2="3" y2="15" stroke="rgba(255,255,255,0.9)" strokeWidth="2.5" strokeLinecap="round"/></svg>}</button>);})}</div></div><div className="tgm-tip">{tip&&<><span className="tgm-tip-label">{tip.label}</span><span className="tgm-tip-desc">{tip.desc}</span></>}</div>{usedTones.length>0&&<div style={{fontSize:10,color:'#4a4945',marginTop:6}}> Already mastered  crossed cells unavailable</div>}{showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}</div>);}
 function TrackRow({track, idx, onChange, onRemove, existingTracks, showSetAll, onSetAll}) {
   const [showTone,setShowTone]=useState(false);
   const [suggestions,setSuggestions]=useState([]);
@@ -329,7 +331,7 @@ function ProjectCard({project,idx,onDelete,onSave,unreadCount,onRefresh}){
   );
   return(
     <div className="card" style={{animationDelay:idx*60+'ms'}}
-      onClick={e=>{if(menuOpen){setMenuOpen(false);e.stopPropagation();return;}if(!isPending)window.location.href='/player?project='+project.id;}}>
+      onClick={e=>{if(menuOpen){setMenuOpen(false);e.stopPropagation();return;}if(!isPending)router.push('/player?project='+project.id);}}>
       <div className="card-header" style={{gap:0,flexDirection:'column',alignItems:'stretch',padding:0}}>
         <div className="card-art-full" style={{position:'relative'}}>
             {isPending&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.65)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:2,borderRadius:'inherit',gap:8}}>
@@ -394,7 +396,7 @@ export default function Dashboard(){
 
   useEffect(()=>{
     sb.auth.getSession().then(({data:{session}})=>{
-      if(!session){window.location.href='/auth';return;}
+      if(!session){router.push('/auth');return;}
       setUser(session.user);loadProjects();loadProjectNotes();
     });
   },[]);
@@ -539,13 +541,13 @@ export default function Dashboard(){
               <div style={{position:'absolute',top:'calc(100% + 8px)',right:0,background:'var(--surf2)',border:'1px solid var(--border2)',borderRadius:10,minWidth:180,zIndex:100,overflow:'hidden',boxShadow:'0 8px 32px rgba(0,0,0,.4)'}}>
                 <div style={{padding:'10px 14px',borderBottom:'1px solid var(--border)',fontSize:11,color:'var(--t3)'}}>{user?.email}</div>
                 <div style={{padding:6}}>
-                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/account';}}>Account Settings</button>
-                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/pricing';}}>Pricing & Plans</button>
-                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/help';}}>Help & FAQ</button>
-                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);window.location.href='/blog';}}>Learning Center</button>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);router.push('/account');}}>Account Settings</button>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);router.push('/pricing');}}>Pricing & Plans</button>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);router.push('/help');}}>Help & FAQ</button>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);router.push('/blog');}}>Learning Center</button>
                   <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);setShowReport(true);}}>Report a Problem</button>
                   <div style={{height:1,background:'var(--border)',margin:'4px 0'}}/>
-                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'#e05050',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);sb.auth.signOut().then(()=>window.location.href='/auth');}}>Sign Out</button>
+                  <button style={{width:'100%',textAlign:'left',padding:'8px 10px',borderRadius:6,border:'none',background:'transparent',color:'#e05050',fontFamily:'var(--fm)',fontSize:12,cursor:'pointer'}} onClick={()=>{setShowMenu(false);sb.auth.signOut().then(()=>router.push('/auth'));}}>Sign Out</button>
                 </div>
               </div>
             </>)}
