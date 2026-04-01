@@ -43,12 +43,16 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Failed to create revision', detail: revErr?.message }, { status: 500 });
     }
     const base = process.env.NEXT_PUBLIC_APP_URL || 'https://maastr-app.vercel.app';
-    await fetch(base + '/api/request-master', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ revisionId: revision.id, projectId: track.project_id || projectId, preset: track.tone_label ?? 'N+N' }),
-    });
-    return NextResponse.json({ status: 'ok', revisionId: revision.id });
+    let masterId;
+    try {
+      const rmRes = await fetch(base + '/api/request-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ revisionId: revision.id, projectId: track.project_id || projectId, preset: track.tone_label ?? 'N+N' }),
+      });
+      if (rmRes.ok) { const rmData = await rmRes.json(); masterId = rmData?.masterId; }
+    } catch(e) { console.error('[init-master] request-master call failed:', e.message); }
+    return NextResponse.json({ status: 'ok', revisionId: revision.id, masterId });
   } catch (e) {
     console.error('[init-master] error:', e);
     return NextResponse.json({ error: e.message }, { status: 500 });
