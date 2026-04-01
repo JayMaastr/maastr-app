@@ -17,8 +17,7 @@ GCS_KEY_B64  = os.environ.get('GCS_SERVICE_ACCOUNT_KEY', '')
 SUPABASE_URL = os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 PORT         = int(os.environ.get('PORT', 3002))
-ENCODER_URL  = os.environ.get('ENCODER_URL', '')
-ENCODER_SECRET = os.environ.get('ENCODE_SECRET', '')
+VERCEL_URL   = os.environ.get('VERCEL_URL', '')
 
 # (gain_db, shelf_db)
 # Loud=+4dB | Normal=+2dB | Gentle=+1dB
@@ -190,24 +189,24 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
                 'audio_url': audio_public_url,
                 'peaks': peaks,
             })
-            if ENCODER_URL:
+            if VERCEL_URL:
                 try:
                     requests.post(
-                        f"{ENCODER_URL}/encode",
+                        f"{VERCEL_URL}/api/encode-master",
                         json={
                             'masterId': master_id,
                             'projectId': project_id,
                             'audioUrl': audio_public_url,
-                            'secret': ENCODER_SECRET
+                            'secret': SECRET
                         },
                         timeout=10
                     )
-                    log(f"step 6: encoder triggered in {time.time()-t0:.1f}s")
+                    log(f"step 6: encode-master triggered in {time.time()-t0:.1f}s")
                 except Exception as enc_err:
-                    log(f"step 6: encoder call failed: {enc_err}")
+                    log(f"step 6: encode-master call failed: {enc_err}")
                     patch_supabase(master_id, {'status': 'failed', 'error': f'encoder: {str(enc_err)[:200]}'})
             else:
-                log("step 6: ENCODER_URL not set, skipping HLS")
+                log("step 6: VERCEL_URL not set, skipping HLS")
             log(f"DONE in {time.time()-t0:.1f}s")
 
     except Exception as e:
