@@ -1,3 +1,4 @@
+// encoder v2.1 — masterId support
 const express = require('express');
 const { execFile } = require('child_process');
 const fs = require('fs');
