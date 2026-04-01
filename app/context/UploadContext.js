@@ -22,11 +22,7 @@ export function UploadProvider({ children }) {
   function finishUpload(ncId) {
     setUploads(prev => ({ ...prev, [ncId]: { ...prev[ncId], progress: 100, done: true } }));
     if (window.nc_finishUpload) window.nc_finishUpload(ncId);
-    if (activeRef.current[ncId]) {
-      activeRef.current[ncId].done = true;
-      activeRef.current[ncId].pct = 100;
-      setTimeout(() => { delete activeRef.current[ncId]; }, 300000);
-    }
+    delete activeRef.current[ncId];
   }
 
 
@@ -35,12 +31,9 @@ export function UploadProvider({ children }) {
     window.nc_requestSync = () => {
       const active = activeRef.current || {};
       Object.entries(active).forEach(([ncId, u]) => {
-        if (window.nc_startUpload) window.nc_startUpload(ncId, u.name, u.projectId, '', 100);
-        if (u.done) {
-          if (window.nc_updateUpload) window.nc_updateUpload(ncId, 100, 100);
-          if (window.nc_finishUpload) window.nc_finishUpload(ncId);
-        } else if (u.pct > 0 && window.nc_updateUpload) {
-          window.nc_updateUpload(ncId, u.pct, 100);
+        if (!u.done) {
+          if (window.nc_startUpload) window.nc_startUpload(ncId, u.name, u.projectId, '', 100);
+          if (u.pct > 0 && window.nc_updateUpload) window.nc_updateUpload(ncId, u.pct, 100);
         }
       });
     };
