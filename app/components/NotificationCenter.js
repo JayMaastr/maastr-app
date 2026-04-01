@@ -61,6 +61,28 @@ export default function NotificationCenter({ user }) {
     return () => timers.forEach(clearTimeout);
   }, [masters]);
 
+  // Polling fallback — queries Supabase every 4s for processing masters
+  // Belt-and-suspenders alongside realtime subscription
+  useEffect(() => {
+    const processingIds = masters.filter(m => m.status === 'processing').map(m => m.id);
+    if (!processingIds.length) return;
+    const iv = setInterval(async () => {
+      try {
+        const { data } = await sb.from('masters').select('id,status').in('id', processingIds);
+        if (!data) return;
+        data.forEach(row => {
+          if (row.status === 'ready' || row.status === 'failed') {
+            setMasters(prev => prev.map(m =>
+              m.id === row.id ? { ...m, status: row.status, readyAt: Date.now(), progress: 100 } : m
+            ));
+            trackedMasterIds.current.delete(row.id);
+          }
+        });
+      } catch(e) { console.warn('[NC] master poll error:', e.message); }
+    }, 4000);
+    return () => clearInterval(iv);
+  }, [masters.filter(m => m.status === 'processing').map(m => m.id).join(',')]);
+
   // Progress ticker — advances processing masters toward 85% over their estimated duration
   useEffect(() => {
     const processing = masters.filter(m => m.status === 'processing' && m.startedAt);
@@ -91,8 +113,9 @@ export default function NotificationCenter({ user }) {
     window.nc_startMaster = (masterId, trackName, projectId, fileSize) => {
       trackedMasterIds.current.add(masterId);
       // Estimate total pipeline time from file size (empirically derived):
-      // 1.7MB (10s) → ~1.7s, 86MB (5:34) → ~11.1s  →  1200 + bytes/8500
-      const estimatedMs = Math.max(2000, 1200 + fileSize / 8500);
+      // covers full pipeline: Railway + encoder download + ffmpeg + GCS upload
+      // 1.7MB → ~2.5s, 86MB → ~26.5s  →  2000 + bytes/3500
+      const estimatedMs = Math.max(3000, 2000 + fileSize / 3500);
       setMasters(prev => [...prev.filter(m => m.id !== masterId), {
         id: masterId, trackName, projectId, status: 'processing',
         startedAt: Date.now(), estimatedMs, progress: 0
@@ -199,14 +222,24 @@ export default function NotificationCenter({ user }) {
         <div style={{height:3,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
           <div style={{height:'100%',borderRadius:2,background:statusColor,
             width: isReady||isFailed ? '100%' : (m.progress || 0) + '%',
-            transition: isReady||isFailed ? 'width .4s' : 'none',
-            opacity: m.status==='processing' ? 0.75 : 1
+            transition: isReady||isFailed ? 'width .4s' : 'width .25s',
+            animation: (!isReady && !isFailed && (m.progress||0) >= 84) ? 'nc-pulse 1.2s ease-in-out infinite' : 'none',
+            opacity: 1
           }}/>
         </div>
         <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',marginTop:5}}>AI Mastering</div>
       </div>
     );
   };
+
+  // Inject keyframe for pulsing bar at 85%
+  useEffect(() => {
+    if (document.getElementById('nc-master-pulse')) return;
+    const s = document.createElement('style');
+    s.id = 'nc-master-pulse';
+    s.textContent = '@keyframes nc-pulse{0%,100%{opacity:.75}50%{opacity:.35}}';
+    document.head.appendChild(s);
+  }, []);
 
   return (
     <div style={{position:'relative'}} ref={panelRef}>
