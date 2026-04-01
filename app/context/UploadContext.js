@@ -94,7 +94,10 @@ export function UploadProvider({ children }) {
         if (newTrack?.id) {
           fetch('/api/process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id, audioUrl: publicUrl, projectId }) });
           fetch('/api/trigger-encode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id, projectId, audioUrl: publicUrl }) });
-          fetch('/api/init-master', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id, projectId }) });
+          fetch('/api/init-master', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id, projectId }) })
+            .then(r => r.json())
+            .then(d => { if (d?.masterId && window.nc_startMaster) window.nc_startMaster(d.masterId, t.name, projectId); })
+            .catch(() => {});
         }
 
         finishUpload(ncId);
