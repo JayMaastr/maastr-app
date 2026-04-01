@@ -17,6 +17,8 @@ GCS_KEY_B64  = os.environ.get('GCS_SERVICE_ACCOUNT_KEY', '')
 SUPABASE_URL = os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 PORT         = int(os.environ.get('PORT', 3002))
+ENCODER_URL  = os.environ.get('ENCODER_URL', '')
+ENCODER_SECRET = os.environ.get('ENCODE_SECRET', '')
 
 # (gain_db, shelf_db)
 # Loud=+4dB | Normal=+2dB | Gentle=+1dB
@@ -182,25 +184,30 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
             audio_public_url = gcs_upload(out_wav, gcs_wav_key)
             log(f"step 5: uploaded in {time.time()-t0:.1f}s")
 
-            # Step 6: HLS
-            log("step 6: HLS encoding + uploading...")
-            hls_dir = f"{tmpdir}/hls"
-            run_ffmpeg_hls(out_wav, hls_dir)
-            hls_base = f"projects/{project_id}/masters/{revision_id}/{master_id}/hls"
-            m3u8_url = None
-            for fname in sorted(os.listdir(hls_dir)):
-                url = gcs_upload(f"{hls_dir}/{fname}", f"{hls_base}/{fname}")
-                if fname.endswith('.m3u8'):
-                    m3u8_url = url
-            log(f"step 6: HLS done in {time.time()-t0:.1f}s")
-
+            # Step 6: trigger fast HLS encode via encoder service
+            log("step 6: sending to encoder service for HLS...")
             patch_supabase(master_id, {
-                'status': 'ready',
                 'audio_url': audio_public_url,
-                'hls_url': m3u8_url,
                 'peaks': peaks,
-                'completed_at': 'now()'
             })
+            if ENCODER_URL:
+                try:
+                    requests.post(
+                        f"{ENCODER_URL}/encode",
+                        json={
+                            'masterId': master_id,
+                            'projectId': project_id,
+                            'audioUrl': audio_public_url,
+                            'secret': ENCODER_SECRET
+                        },
+                        timeout=10
+                    )
+                    log(f"step 6: encoder triggered in {time.time()-t0:.1f}s")
+                except Exception as enc_err:
+                    log(f"step 6: encoder call failed: {enc_err}")
+                    patch_supabase(master_id, {'status': 'failed', 'error': f'encoder: {str(enc_err)[:200]}'})
+            else:
+                log("step 6: ENCODER_URL not set, skipping HLS")
             log(f"DONE in {time.time()-t0:.1f}s")
 
     except Exception as e:
