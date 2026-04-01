@@ -77,14 +77,27 @@ async function updateTrackHLS(trackId, hlsUrl) {
   return res.ok;
 }
 
+async function updateMasterHLS(masterId, hlsUrl) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/masters?id=eq.${masterId}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: SUPABASE_SERVICE_KEY,
+      Authorization: 'Bearer ' + SUPABASE_SERVICE_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ hls_url: hlsUrl, status: 'ready', completed_at: new Date().toISOString() })
+  });
+  return res.ok;
+}
+
 app.get('/', (req, res) => res.json({ status: 'ok', service: 'maastr-encoder', storage: 'gcs' }));
 
 app.post('/encode', async (req, res) => {
-  const { trackId, projectId, audioUrl, secret } = req.body;
+  const { trackId, masterId, projectId, audioUrl, secret } = req.body;
   if (secret !== APP_SECRET) return res.status(403).json({ error: 'forbidden' });
-  if (!trackId || !projectId || !audioUrl) return res.status(400).json({ error: 'trackId, projectId, audioUrl required' });
+  if ((!trackId && !masterId) || !projectId || !audioUrl) return res.status(400).json({ error: 'trackId or masterId, projectId, audioUrl required' });
 
-  res.json({ status: 'encoding', trackId });
+  res.json({ status: 'encoding', trackId: trackId || masterId });
 
   // Run encoding in background
   (async () => {
@@ -122,7 +135,7 @@ app.post('/encode', async (req, res) => {
 
       // Upload all HLS files to GCS
       const token = await getGCSToken();
-      const hlsBase = `projects/${projectId}/hls/${trackId}`;
+      const hlsBase = `projects/${projectId}/hls/${masterId || trackId}`;
       const files = fs.readdirSync(hlsDir);
 
       for (const file of files) {
@@ -134,7 +147,11 @@ app.post('/encode', async (req, res) => {
       }
 
       const hlsUrl = `https://storage.googleapis.com/${GCS_BUCKET}/${hlsBase}/playlist.m3u8`;
-      await updateTrackHLS(trackId, hlsUrl);
+      if (masterId) {
+        await updateMasterHLS(masterId, hlsUrl);
+      } else {
+        await updateTrackHLS(trackId, hlsUrl);
+      }
       console.log('[encode] Done! hls_url:', hlsUrl);
 
     } catch (e) {
