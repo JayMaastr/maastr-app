@@ -45,6 +45,8 @@ export default function NotificationCenter({ user }) {
       setUploads(prev => prev.map(u => u.id === uploadId ? {...u, status: 'done', done: u.total} : u));
     };
     window.nc_openToUploads = () => { setTab('uploads'); setOpen(true); };
+    // Tell UploadContext to re-announce any active uploads to this newly mounted NC
+    if (window.nc_requestSync) window.nc_requestSync();
     return () => {
       delete window.nc_startUpload;
       delete window.nc_updateUpload;
@@ -175,7 +177,7 @@ export default function NotificationCenter({ user }) {
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                         <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.label||u.projectName}</div>
                         <div style={{fontFamily:'var(--fm)',fontSize:10,color:u.status==='done'?'#4caf50':'var(--amber)',fontWeight:600}}>
-                          {u.status==='done'?'Ã¢ÂÂ Done':u.done+'%'}
+                          {u.status==='done'?'ÃÂ¢ÃÂÃÂ Done':u.done+'%'}
                         </div>
                       </div>
                       <div style={{height:4,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
