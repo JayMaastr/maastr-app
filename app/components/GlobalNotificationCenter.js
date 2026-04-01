@@ -1,12 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { sb } from '@/lib/supabase';
 
-// Headless component — lives in layout, never unmounts.
-// When user navigates to a page with an NC, calls nc_requestSync so
-// UploadContext re-announces any active uploads to the newly mounted NC.
+// Headless — never unmounts. Fires nc_requestSync on every navigation so the
+// newly mounted page NC gets a fresh copy of any active uploads from UploadContext.
 export default function GlobalNotificationCenter() {
   const [user, setUser] = useState(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
@@ -18,14 +19,14 @@ export default function GlobalNotificationCenter() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Re-sync on every route change so the newly mounted NC shows active uploads
   useEffect(() => {
     if (!user) return;
-    // Give the page's NC time to mount and register its handlers, then sync
     const t = setTimeout(() => {
       if (window.nc_requestSync) window.nc_requestSync();
     }, 150);
     return () => clearTimeout(t);
-  }, [user]);
+  }, [user, pathname]);
 
   return null;
 }
