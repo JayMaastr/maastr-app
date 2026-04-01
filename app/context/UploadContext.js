@@ -92,9 +92,9 @@ export function UploadProvider({ children }) {
         }).select().single();
 
         if (newTrack?.id) {
-          fetch('/api/process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id }) }).catch(() => {});
-          fetch('/api/trigger-encode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id, projectId }) }).catch(() => {});
-          fetch('/api/init-master', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id, projectId }) }).catch(() => {});
+          fetch('/api/process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id, audioUrl: publicUrl, projectId }) });
+          fetch('/api/trigger-encode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id, projectId, audioUrl: publicUrl }) });
+          fetch('/api/init-master', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trackId: newTrack.id, projectId }) });
         }
 
         finishUpload(ncId);
