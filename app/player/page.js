@@ -466,12 +466,12 @@ useEffect(()=>{
   if(!activeTrackId||!tracks.length)return;
   const track=tracks.find(t=>t.id===activeTrackId);
   const masterStatus=track?.revisions?.[0]?.masters?.[0]?.status;
-  if(masterStatus==='ready'||!masterStatus)return; // nothing to poll
+  if(masterStatus==='ready'){if(track?.revisions?.[0])setActiveRevision(track.revisions[0]);return;}if(!masterStatus)return;
   const interval=setInterval(async()=>{
     const {data}=await sb.from('tracks').select('*,revisions(*,masters(*))').eq('id',activeTrackId).single();
     if(!data)return;
     setTracks(prev=>prev.map(t=>t.id===activeTrackId?{...t,...data}:t));
-    if(data.revisions?.[0]?.masters?.[0]?.status==='ready')clearInterval(interval);
+    if(data.revisions?.[0]?.masters?.[0]?.status==='ready'){setActiveRevision(data.revisions[0]);clearInterval(interval);}
   },4000);
   return()=>clearInterval(interval);
 },[activeTrackId,tracks]);
