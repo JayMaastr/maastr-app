@@ -177,7 +177,7 @@ export default function NotificationCenter({ user }) {
                       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
                         <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.label||u.projectName}</div>
                         <div style={{fontFamily:'var(--fm)',fontSize:10,color:u.status==='done'?'#4caf50':'var(--amber)',fontWeight:600}}>
-                          {u.status==='done'?'ÃÂ¢ÃÂÃÂ Done':u.done+'%'}
+                          {u.status==='done'?'\u2713 Done':u.done+'%'}
                         </div>
                       </div>
                       <div style={{height:4,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
