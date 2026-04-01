@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
 import NotificationCenter from '@/app/components/NotificationCenter';
 
@@ -326,6 +327,7 @@ return(<div className={'tr-row'+(isActive?' tr-active':'')}>
     {revDeleteOpen&&(<div className="rev-action-panel" onClick={e=>e.stopPropagation()}>{deleteRevStep===1&&deleteRevTarget?(<div className="rev-del-confirm"><div className="rev-del-confirm-title">Delete {deleteRevTarget.label||('v'+(deleteRevTarget.version_number||'?'))}?</div><div className="rev-del-confirm-sub">Permanently deletes this revision and all its notes.</div><div className="rev-del-actions"><button className="btn-ghost-sm" onClick={()=>{setDeleteRevStep(0);setDeleteRevTarget(null);}}>Cancel</button><button className="btn-delete-sm" onClick={()=>{onDeleteRevision(deleteRevTarget,track);setRevDeleteOpen(false);setDeleteRevTarget(null);setDeleteRevStep(0);}}>Delete Forever</button></div></div>):(<><div className="rev-action-label">Which revision to delete?</div>{revisions.map(rev=>(<button key={rev.id} className="rev-del-row" onClick={()=>{setDeleteRevTarget(rev);setDeleteRevStep(1);}}><span className="rev-del-row-label">{rev.label||('v'+(rev.version_number||'?'))}</span>{rev.tone_label&&<span className="rev-del-row-tone">{rev.tone_label}</span>}<span className="rev-del-row-date">{fmtDate(rev.created_at)}</span>{rev.is_active&&<span className="rev-del-row-active">current</span>}</button>))}<button className="btn-ghost-sm" style={{width:'100%',marginTop:8}} onClick={()=>{setRevDeleteOpen(false);setDeleteRevTarget(null);}}>Cancel</button></>)}</div>)}
   </div>);}
 export default function Player(){
+  const router = useRouter();
   const [user,setUser]=useState(null);const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);
   useEffect(()=>{
     if(tracks.length===0||tracks.every(t=>t.peaks&&t.peaks.length>=4)) return;
