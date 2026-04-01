@@ -393,7 +393,7 @@ const readyMaster=activeRevision?.masters?.find(m=>m.status==='ready'&&m.hls_url
     if(!hlsUrl&&!wavUrl)return;
     // Destroy any existing HLS instance
     if(window.__hlsInst){window.__hlsInst.destroy();window.__hlsInst=null;}
-    el.pause();
+    el.pause();setPlaying(false);
     if(hlsUrl){
       // HLS path  instant start, FLAC quality
       import('hls.js').then(({default:Hls})=>{
@@ -426,7 +426,7 @@ const readyMaster=activeRevision?.masters?.find(m=>m.status==='ready'&&m.hls_url
     return ()=>{
       if(window.__hlsInst){window.__hlsInst.destroy();window.__hlsInst=null;}
     };
-  },[activeTrackId,activeRevision,activeMaster,tracks,activeSource]);
+  },[activeTrackId,activeRevision,activeMaster,activeSource]);
 
   // HLS polling  watches for hls_url to appear after encoding completes
   useEffect(()=>{
