@@ -124,7 +124,8 @@ function sanitizeFilename(name){return name.replace(/[^a-zA-Z0-9._-]/g,'_');}
 function urlToKey(url){try{return decodeURIComponent(new URL(url).pathname.replace(/^\//,''));}catch{return null;}}
 
 function ProjectCard({
-  const router = useRouter();project,idx,onDelete,onSave,unreadCount,onRefresh}){
+  project,idx,onDelete,onSave,unreadCount,onRefresh}){
+  const router = useRouter();
   const [menuOpen,setMenuOpen]=useState(false);
   const [editing,setEditing]=useState(false);
   const [editTitle,setEditTitle]=useState(project.title||'');
