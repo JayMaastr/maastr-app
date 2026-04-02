@@ -330,7 +330,7 @@ return(<div className={'tr-row'+(isActive?' tr-active':'')}>
 function MasteringModal({rerunTrack,rerunTone,setRerunTone,rerunUploading,setRerunUploading,setRerunTrack,activeRevision,activeMaster,project,setActiveMaster,setActiveSource}){
   if(!rerunTrack)return null;
   const _rev=rerunTrack.revisions?.find(r=>r.is_active)||rerunTrack.revisions?.[rerunTrack.revisions.length-1];
-  const _activePreset=_rev?.tone_label||rerunTrack.tone_label;
+  const _activePreset=activeMaster?.preset||_rev?.tone_label||rerunTrack.tone_label;
   const _selTone=TONES.find(t=>t.short===rerunTone);
   const _selReadyMaster=_rev?.masters?.find(m=>m.preset===rerunTone&&m.status==='ready');
   const _btnLabel=rerunUploading?'Processing...':!rerunTone?'Select a tone':_selReadyMaster?'Switch to '+(_selTone?.label||rerunTone):'Master with '+(_selTone?.label||rerunTone);
@@ -690,7 +690,7 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
       </div>}
       <div className="tracks-lbl">{tracks.length===0?'Waiting for tracks':`${tracks.length} ${tracks.length===1?'track':'tracks'}`}</div>
       <div style={{borderRadius:12,overflow:'hidden',border:'1px solid var(--border)'}}>
-        {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} isMastering={!!(track.revisions?.some(r=>r.is_active&&processingMasters[r.id]))} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}} activeTone={(track.revisions?.find(r=>r.is_active)||track.revisions?.[track.revisions.length-1])?.tone_label||track.tone_label} onOpenToneModal={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
+        {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} isMastering={!!(track.revisions?.some(r=>r.is_active&&processingMasters[r.id]))} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}} activeTone={activeMaster?.preset||(track.revisions?.find(r=>r.is_active)||track.revisions?.[track.revisions.length-1])?.tone_label||track.tone_label} onOpenToneModal={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
       </div>
     </div>
     <div className="ps-controls-bar">
