@@ -299,7 +299,7 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
       </div>
     </div>
   </>);}
-function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRename,onDeleteTrack,onDeleteRevision,onRerunRevision,isMastering}){
+function TrackRow({track,idx,isActive,isPlaying,noteCount,onPlay,onDetail,onRename,onDeleteTrack,onDeleteRevision,onRerunRevision,isMastering,activeTone,onOpenToneModal}){
   const [menuOpen,setMenuOpen]=useState(false);const [renaming,setRenaming]=useState(false);const [renameVal,setRenameVal]=useState(track.title||'');const menuBtnRef=useRef(null);
   const revisions=[...(track.revisions||[])].sort((a,b)=>(b.version_number||0)-(a.version_number||0));const revCount=revisions.length;
   const [revDeleteOpen,setRevDeleteOpen]=useState(false);const [deleteRevStep,setDeleteRevStep]=useState(0);const [deleteRevTarget,setDeleteRevTarget]=useState(null);
@@ -314,10 +314,10 @@ return(<div className={'tr-row'+(isActive?' tr-active':'')}>
       </div>
       <div className="tr-actions">
         <button className="tr-comment-btn" onClick={e=>{e.stopPropagation();onDetail(track);}}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>{noteCount>0&&<span className="tr-note-count">{noteCount}</span>}</button>
-        <div style={{position:'relative'}}><button ref={menuBtnRef} className="tr-menu-btn" onClick={e=>{e.stopPropagation();setMenuOpen(o=>!o);}}><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
+        {onOpenToneModal&&activeTone&&<button onClick={e=>{e.stopPropagation();onOpenToneModal(track);}} title="Mastering settings" style={{width:40,height:44,borderRadius:9,border:'none',background:'transparent',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',WebkitTapHighlightColor:'transparent',padding:4,flexShrink:0}}><div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:1.5,width:24,height:24,borderRadius:3,overflow:'hidden',border:'1px solid rgba(255,255,255,0.12)'}}>{TONE_BG.map((bg,i)=><div key={i} style={{background:bg,opacity:TONES[i].short===activeTone?1:0.22}}/>)}</div></button>}<div style={{position:'relative'}}><button ref={menuBtnRef} className="tr-menu-btn" onClick={e=>{e.stopPropagation();setMenuOpen(o=>!o);}}><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
           <FixedDropdown anchorRef={menuBtnRef} open={menuOpen} onClose={()=>setMenuOpen(false)}>
             <button className="tdrop-item" onClick={()=>{setMenuOpen(false);setRenameVal(track.title||'');setRenaming(true);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Rename Track</button>
-            <button className="tdrop-item" onClick={()=>{setMenuOpen(false);onRerunRevision(track);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg>Remaster</button>
+            
             {revCount>1&&<button className="tdrop-item" onClick={()=>{setMenuOpen(false);setDeleteRevStep(0);setDeleteRevTarget(null);setRevDeleteOpen(true);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Delete a Revision</button>}
             <div className="tdrop-divider"/>
             <button className="tdrop-item danger" onClick={()=>{setMenuOpen(false);onDeleteTrack(track);}}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>Delete Track</button>
@@ -632,7 +632,7 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
       </div>}
       <div className="tracks-lbl">{tracks.length===0?'Waiting for tracks':`${tracks.length} ${tracks.length===1?'track':'tracks'}`}</div>
       <div style={{borderRadius:12,overflow:'hidden',border:'1px solid var(--border)'}}>
-        {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} isMastering={!!(track.revisions?.some(r=>r.is_active&&processingMasters[r.id]))} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
+        {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} isMastering={!!(track.revisions?.some(r=>r.is_active&&processingMasters[r.id]))} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}} activeTone={(t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1])?.tone_label||t.tone_label} onOpenToneModal={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
       </div>
     </div>
     <div className="ps-controls-bar">
@@ -648,7 +648,62 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
     <TrackDetail open={!!detailTrack} track={detailTrack||activeTrack} activeRevision={activeRevision} notes={notes} currentTime={currentTime} duration={duration} progress={progress} isPlaying={playing} onTogglePlay={togglePlay} onSkip={skip} onPrevTrack={()=>jumpToTrack(activeIdx-1)} onNextTrack={()=>jumpToTrack(activeIdx+1)} canPrev={activeIdx>0} canNext={activeIdx>=0&&activeIdx<tracks.length-1} onSeek={handleSeek} onClose={()=>setDetailTrack(null)} onPost={postNote} onSeekToTime={seekToTime} onRevisionSelect={selectRevisionInDetail} activeMaster={activeMaster} onMasterSelect={setActiveMaster}/>
     <audio ref={audioRef} preload="metadata" onTimeUpdate={e=>{setCurrentTime(e.target.currentTime);if(typeof navigator!=='undefined'&&'mediaSession' in navigator&&activeTrack){navigator.mediaSession.metadata=new MediaMetadata({title:activeTrack.title||'',artist:project?.artist||'',album:project?.title||'',artwork:project?.image_url?[{src:project.image_url,sizes:'512x512',type:'image/jpeg'}]:[]});navigator.mediaSession.setActionHandler('play',()=>audioRef.current?.play());navigator.mediaSession.setActionHandler('pause',()=>audioRef.current?.pause());}}} onDurationChange={e=>{if(e.target.duration&&isFinite(e.target.duration))setDuration(e.target.duration);}} onEnded={()=>setPlaying(false)} onError={()=>{setDuration(0);setPlaying(false);}}/>
     {deleteTrackConfirm&&(<div className="overlay-bg" onClick={()=>setDeleteTrackConfirm(null)}><div className="confirm-box" onClick={e=>e.stopPropagation()}><div className="confirm-box-title">Delete {deleteTrackConfirm.title}?</div><div className="confirm-box-sub">Permanently deletes all revisions and notes. Cannot be undone.</div><div className="confirm-box-actions"><button className="btn-confirm-cancel" onClick={()=>setDeleteTrackConfirm(null)}>Keep it</button><button className="btn-confirm-delete" onClick={()=>deleteTrack(deleteTrackConfirm)}>Delete Forever</button></div></div></div>)}
-    {rerunTrack&&(<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!rerunUploading&&setRerunTrack(null)}><div className="modal-scroll-inner"><div className="rev-modal"><div className="rev-modal-title">Remaster</div><div className="rerun-target">Track: <strong>{rerunTrack.title}</strong></div><p style={{fontSize:12,color:'var(--t2)',marginBottom:12,lineHeight:1.5}}>Choose a new tone setting. Same source audio, new mastering.</p><ToneGrid value={rerunTone} usedTones={rerunUsedTones} onChange={setRerunTone}/><div className="rev-modal-footer"><span className="rev-modal-status">{rerunStatus}</span><button className="btn-ghost-sm" disabled={rerunUploading} onClick={()=>setRerunTrack(null)}>Cancel</button><button className="btn-amber-sm" disabled={rerunTone===null||rerunUploading} onClick={submitRerun}>{rerunUploading?'Processing':'Remaster'}</button></div></div></div></div>)}
+    {rerunTrack&&(()=>{
+  const _rev=rerunTrack.revisions?.find(r=>r.is_active)||rerunTrack.revisions?.[rerunTrack.revisions.length-1];
+  const _activePreset=_rev?.tone_label||rerunTrack.tone_label;
+  const _selTone=TONES.find(t=>t.short===rerunTone);
+  const _selReadyMaster=_rev?.masters?.find(m=>m.preset===rerunTone&&m.status==='ready');
+  const _btnLabel=rerunUploading?'Processing...':!rerunTone?'Select a tone':_selReadyMaster?`Switch to ${_selTone?.label||rerunTone}`:`Master with ${_selTone?.label||rerunTone}`;
+  return(<>
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.85)',zIndex:200}} onClick={()=>!rerunUploading&&(setRerunTrack(null),setRerunTone(null))}/>
+    <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:16,padding:24,width:360,maxWidth:'90vw',zIndex:201}}>
+      <div style={{fontFamily:'var(--fh)',fontSize:18,marginBottom:4}}>Mastering</div>
+      <div style={{fontSize:11,color:'var(--t3)',marginBottom:16}}>Track: <strong style={{color:'var(--text)'}}>{rerunTrack.title}</strong></div>
+      <div style={{display:'flex',fontSize:9,color:'var(--t3)',letterSpacing:'.07em',textTransform:'uppercase',marginBottom:8,alignItems:'center'}}>
+        <span>Warmer</span><span style={{margin:'0 auto',color:'var(--amber)',fontWeight:500,fontSize:10}}>TONE GRID</span><span>Brighter</span>
+      </div>
+      <div style={{display:'flex',gap:6,alignItems:'flex-start'}}>
+        <div style={{display:'flex',flexDirection:'column',gap:4,marginRight:6,fontSize:9,color:'var(--t3)'}}>
+          {['Louder','Normal','Gentler'].map(l=><div key={l} style={{height:44,display:'flex',alignItems:'center',justifyContent:'flex-end',whiteSpace:'nowrap'}}>{l}</div>)}
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5,flex:1}}>
+          {TONES.map((t,i)=>{
+            const _isCurrent=t.short===_activePreset;
+            const _ready=_rev?.masters?.find(m=>m.preset===t.short&&m.status==='ready');
+            const _isSel=rerunTone===t.short;
+            const _op=_isSel?1:_isCurrent?1:_ready?0.75:0.32;
+            return(<button key={i} onClick={()=>!_isCurrent&&setRerunTone(t.short)}
+              style={{height:44,borderRadius:8,border:_isSel?`2.5px solid ${TONE_BORDER[i]}`:'1.5px solid rgba(0,0,0,0.2)',background:TONE_BG[i],opacity:_op,cursor:_isCurrent?'default':'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',transition:'opacity .15s',WebkitTapHighlightColor:'transparent'}}>
+              {_isCurrent&&<div style={{width:8,height:8,borderRadius:'50%',background:'rgba(255,255,255,.95)',boxShadow:'0 0 0 2px rgba(0,0,0,.35)'}}/>}
+              {_ready&&!_isCurrent&&<svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{position:'absolute'}}><circle cx="8" cy="8" r="7" fill="rgba(0,0,0,.35)"/><polyline points="4,8.5 6.5,11 12,5.5" stroke="rgba(255,255,255,.95)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            </button>);
+          })}
+        </div>
+      </div>
+      {rerunTone&&<div style={{marginTop:10,padding:'8px 10px',background:'var(--surf2)',borderRadius:8}}><div style={{fontSize:11,color:'var(--amber)',fontWeight:500}}>{_selTone?.label}</div><div style={{fontSize:10,color:'var(--t2)',marginTop:2}}>{_selTone?.desc}</div></div>}
+      <div style={{marginTop:8,fontSize:10,color:'var(--t3)',display:'flex',gap:16}}>
+        <span>● current</span><span style={{display:'flex',alignItems:'center',gap:3}}><svg width="11" height="11" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" fill="rgba(255,255,255,.15)"/><polyline points="4,8.5 6.5,11 12,5.5" stroke="rgba(255,255,255,.7)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>already done</span>
+      </div>
+      <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+        <button onClick={()=>{setRerunTrack(null);setRerunTone(null);}} style={{padding:'10px 16px',borderRadius:8,border:'1px solid var(--border2)',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:13,cursor:'pointer'}}>Cancel</button>
+        <button disabled={!rerunTone||rerunUploading} onClick={async()=>{
+          if(_selReadyMaster){setActiveMaster(_selReadyMaster);setActiveSource('master');setRerunTrack(null);setRerunTone(null);return;}
+          setRerunUploading(true);
+          try{
+            const res=await fetch('/api/request-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revisionId:_rev.id,projectId:project.id,preset:rerunTone})});
+            const data=await res.json();
+            if(data.masterId&&window.nc_startMaster){
+              let fs=50*1024*1024;
+              try{const h=await fetch(_rev.audio_url||_rev.mp3_url,{method:'HEAD'});fs=parseInt(h.headers.get('content-length')||'0')||fs;}catch(e){}
+              window.nc_startMaster(data.masterId,rerunTrack.title,project.id,fs);
+            }
+          }catch(e){console.error('remaster failed:',e);}
+          setRerunUploading(false);setRerunTrack(null);setRerunTone(null);
+        }} style={{padding:'10px 20px',borderRadius:8,border:'none',background:!rerunTone?'var(--surf3)':'var(--amber)',color:!rerunTone?'var(--t3)':'#000',fontFamily:'var(--fm)',fontSize:13,fontWeight:600,cursor:!rerunTone||rerunUploading?'default':'pointer',opacity:rerunUploading?.5:1}}>{_btnLabel}</button>
+      </div>
+    </div>
+  </>);
+})()}
     {showRevModal&&(<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!revUploading&&setShowRevModal(false)}><div className="modal-scroll-inner"><div className="rev-modal"><div className="rev-modal-title">Upload Revisions</div><div className="rev-modal-sub">Drop files. Matched by name  new names become new tracks.</div><div className={'rev-dropzone'+(revDragging?' over':'')} onDragOver={e=>{e.preventDefault();setRevDragging(true);}} onDragLeave={e=>{e.preventDefault();setRevDragging(false);}} onDrop={e=>{e.preventDefault();e.stopPropagation();setRevDragging(false);addRevFiles(e.dataTransfer?.files||[]);}} onClick={()=>document.getElementById('rev-multi-input').click()}><div style={{fontSize:24,marginBottom:6}}></div><strong>{revFiles.length>0?'Drop more files':'Drop WAV / MP3 files here'}</strong><br/><span style={{fontSize:11,opacity:.6}}>Multiple files OK  or tap to browse</span><input id="rev-multi-input" type="file" accept=".wav,.mp3,.aiff,.aif,.flac,.m4a,audio/*" multiple style={{display:'none'}} onChange={e=>{addRevFiles(e.target.files);e.target.value='';  }}/></div>{revFiles.length>0&&(<div className="rev-file-list">{revFiles.map((entry,i)=>(<div key={i} className={'rev-file-row'+(entry.isNew?' is-new':'')}><div className="rev-file-row-top"><input className="rev-file-name-input" value={entry.name} onChange={e=>{const n=e.target.value;const m=tracks.find(t=>t.title.toLowerCase()===n.toLowerCase());setRevFiles(prev=>prev.map((r,j)=>j===i?{...r,name:n,matchedTrackId:m?.id||null,isNew:!m}:r));}} placeholder="Track name"/><span className={entry.isNew?'rev-file-badge-new':'rev-file-badge-rev'}>{entry.isNew?'new track':'revision'}</span><button className="rev-file-remove" onClick={()=>setRevFiles(prev=>prev.filter((_,j)=>j!==i))}></button></div><div className="rev-file-ref">{entry.file.name}  {(entry.file.size/1024/1024).toFixed(1)} MB{entry.peaksComputed?'  waveform ':''}</div><div style={{display:'flex',alignItems:'center',gap:8}}><span style={{fontSize:11,color:'var(--t2)',flexShrink:0}}>Tone:</span><div style={{flex:1}}><ToneGrid value={entry.tone} usedTones={entry.matchedTrackId?tracks.find(t=>t.id===entry.matchedTrackId)?.revisions?.map(r=>r.tone_setting).filter(t=>t!=null)||[]:[]} onChange={t=>setRevFiles(prev=>prev.map((r,j)=>j===i?{...r,tone:t}:r))} showSetAll={revFiles.length>1} onSetAll={t=>setRevFiles(prev=>prev.map(r=>({...r,tone:t})))}/></div></div></div>))}</div>)}<div className="rev-modal-footer"><span className="rev-modal-status">{revStatus}</span><button className="btn-ghost-sm" disabled={revUploading} onClick={()=>setShowRevModal(false)}>Cancel</button><button className="btn-amber-sm" disabled={revFiles.length===0||revUploading||revFiles.some(e=>!e.name.trim())} onClick={submitRevisions}>{revUploading?revStatus||'Uploading':'Upload '+revFiles.length+' file'+(revFiles.length!==1?'s':'')}</button></div></div></div></div>)}
       {showReport&&(<>
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.7)',zIndex:200}} onClick={()=>{setShowReport(false);setReportSent(false);setReportMsg('');}}/>
