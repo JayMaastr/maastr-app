@@ -1,0 +1,54 @@
+steps:
+  # Build the mastering container from the mastering/ subdirectory
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
+      - 'mastering'
+
+  # Push to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'maastr-mastering'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--concurrency'
+      - '1'
+      - '--cpu-always-allocated'
+      - '--max-instances'
+      - '20'
+      - '--min-instances'
+      - '0'
+      - '--memory'
+      - '2Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_KEY},VERCEL_URL=https://maastr-app.vercel.app'
+
+substitutions:
+  _SUPABASE_URL: ''
+  _SUPABASE_KEY: ''
+
+images:
+  - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
