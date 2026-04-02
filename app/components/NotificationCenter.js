@@ -133,20 +133,29 @@ export default function NotificationCenter({ user }) {
       ));
     };
     window.nc_startMaster = (masterId, trackName, projectId, fileSize) => {
-      // Find the upload row for this project and transition it to mastering phase
       const estimatedMs = Math.max(3000, 2000 + fileSize / 3500);
-      trackedMasterIds.current[masterId] = null; // will be set once we find the upload row
+      trackedMasterIds.current[masterId] = null;
       setUploads(prev => {
-        // Find most recent upload for this project
-        const idx = [...prev].reverse().findIndex(u => u.projectId === projectId);
-        if (idx === -1) return prev;
-        const realIdx = prev.length - 1 - idx;
-        const uploadId = prev[realIdx].id;
-        trackedMasterIds.current[masterId] = uploadId;
-        return prev.map((u, i) => i === realIdx
-          ? { ...u, label: trackName, phase: 'mastering', masterProgress: 0, estimatedMs, masterStartedAt: Date.now() }
-          : u
-        );
+        // Try to find an existing upload row for this project to transition
+        const idx = [...prev].reverse().findIndex(u => u.projectId === projectId && u.phase !== 'done' && u.phase !== 'failed');
+        if (idx !== -1) {
+          const realIdx = prev.length - 1 - idx;
+          const uploadId = prev[realIdx].id;
+          trackedMasterIds.current[masterId] = uploadId;
+          return prev.map((u, i) => i === realIdx
+            ? { ...u, label: trackName, phase: 'mastering', masterProgress: 0, estimatedMs, masterStartedAt: Date.now() }
+            : u
+          );
+        }
+        // No upload row — create a masterOnly row (green bar from scratch, no amber phase)
+        const newId = masterId + '-nc';
+        trackedMasterIds.current[masterId] = newId;
+        return [...prev, {
+          id: newId, label: trackName, projectId,
+          projectName: trackName, uploadProgress: 100, total: 1,
+          phase: 'mastering', masterOnly: true,
+          masterProgress: 0, estimatedMs, masterStartedAt: Date.now(), readyAt: null
+        }];
       });
       setOpen(true);
       setTab('uploads');
