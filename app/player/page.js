@@ -349,11 +349,11 @@ function MasteringModal({rerunTrack,rerunTone,setRerunTone,rerunUploading,setRer
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5,flex:1}}>
           {TONES.map((t,i)=>{
-            const _isCurrent=t.short===_activePreset;
-            const _ready=_rev?.masters?.find(m=>m.preset===t.short&&m.status==='ready');
+            const _isCurrent=t.short===_activePreset||t.label===_activePreset;
+            const _ready=_rev?.masters?.find(m=>(m.preset===t.short||m.preset===t.label)&&m.status==='ready');
             const _isSel=rerunTone===t.short;
             const _op=_isSel?1:_isCurrent?1:_ready?0.75:0.32;
-            return(<button key={i} onClick={()=>!_isCurrent&&setRerunTone(t.short)}
+            return(<button key={i} onClick={()=>(!_isCurrent)&&setRerunTone(t.short)}
               style={{height:44,borderRadius:8,border:_isSel?('2.5px solid '+TONE_BORDER[i]):'1.5px solid rgba(0,0,0,0.2)',background:TONE_BG[i],opacity:_op,cursor:_isCurrent?'default':'pointer',position:'relative',display:'flex',alignItems:'center',justifyContent:'center',transition:'opacity .15s',WebkitTapHighlightColor:'transparent'}}>
               {_isCurrent&&<div style={{width:8,height:8,borderRadius:'50%',background:'rgba(255,255,255,.95)',boxShadow:'0 0 0 2px rgba(0,0,0,.35)'}}/>}
               {_ready&&!_isCurrent&&<svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{position:'absolute'}}><circle cx="8" cy="8" r="7" fill="rgba(0,0,0,.35)"/><polyline points="4,8.5 6.5,11 12,5.5" stroke="rgba(255,255,255,.95)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
