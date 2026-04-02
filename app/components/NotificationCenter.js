@@ -132,14 +132,27 @@ export default function NotificationCenter({ user }) {
         : u
       ));
     };
-    window.nc_startMaster = (masterId, trackName, projectId, fileSize) => {
+    window.nc_startMaster = (masterId, trackName, projectId, fileSize, ncId) => {
       const estimatedMs = Math.max(3000, 2000 + fileSize / 3500);
       trackedMasterIds.current[masterId] = null;
       setUploads(prev => {
-        // Try to find an existing upload row for this project to transition
-        const idx = [...prev].reverse().findIndex(u => u.projectId === projectId && u.phase !== 'done' && u.phase !== 'failed');
-        if (idx !== -1) {
-          const realIdx = prev.length - 1 - idx;
+        // If ncId provided, find that exact upload row (parallel multi-track support)
+        // Otherwise fall back to projectId search
+        let idx = -1;
+        if (ncId) {
+          idx = prev.findIndex(u => u.id === ncId && u.phase !== 'done' && u.phase !== 'failed');
+          if (idx !== -1) {
+            trackedMasterIds.current[masterId] = prev[idx].id;
+            return prev.map((u, i) => i === idx
+              ? { ...u, label: trackName, phase: 'mastering', masterProgress: 0, estimatedMs, masterStartedAt: Date.now() }
+              : u
+            );
+          }
+        }
+        // Fallback: find most recent uploading row for this project
+        const revIdx = [...prev].reverse().findIndex(u => u.projectId === projectId && u.phase !== 'done' && u.phase !== 'failed');
+        if (revIdx !== -1) {
+          const realIdx = prev.length - 1 - revIdx;
           const uploadId = prev[realIdx].id;
           trackedMasterIds.current[masterId] = uploadId;
           return prev.map((u, i) => i === realIdx
