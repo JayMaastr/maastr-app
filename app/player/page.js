@@ -373,6 +373,8 @@ function MasteringModal({rerunTrack,rerunTone,setRerunTone,rerunUploading,setRer
           try{
             const res=await fetch('/api/request-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revisionId:_rev.id,projectId:project.id,preset:rerunTone})});
             const data=await res.json();
+            // Store pending preset for auto-activation once ready
+            window.__pendingAutoActivate={preset:rerunTone,revisionId:_rev.id};
             if(data.masterId&&window.nc_startMaster){
               let fs=50*1024*1024;
               try{const h=await fetch(_rev.audio_url||_rev.mp3_url,{method:'HEAD'});fs=parseInt(h.headers.get('content-length')||'0')||fs;}catch(e){}
@@ -554,6 +556,16 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
   async function submitRevisions(){if(!revFiles.length||!project)return;setRevUploading(true);try{for(let i=0;i<revFiles.length;i++){const entry=revFiles[i];setRevStatus('Uploading '+(i+1)+'/'+revFiles.length+': '+entry.name);const safeName=sanitize(entry.file.name);const r=await fetch(UPLOAD_WORKER_URL,{method:'POST',headers:{'X-File-Name':safeName,'X-Project-Id':project.id,'Content-Type':entry.file.type||'audio/wav'},body:entry.file});const result=await r.json();if(!result.url)continue;const tone=TONES[entry.tone];const peaks=entry.peaks.length>0?entry.peaks:[];if(entry.matchedTrackId&&!entry.isNew){const {data:existing}=await sb.from('revisions').select('version_number').eq('track_id',entry.matchedTrackId).order('version_number',{ascending:false}).limit(1);const nextVer=(existing?.[0]?.version_number||1)+1;await sb.from('revisions').update({is_active:false}).eq('track_id',entry.matchedTrackId);await sb.from('revisions').insert({track_id:entry.matchedTrackId,project_id:project.id,version_number:nextVer,label:'v'+nextVer,audio_url:result.url,mp3_url:result.url,tone_setting:entry.tone,tone_label:tone.label,is_active:true});if(peaks.length>0)await sb.from('tracks').update({peaks,tone_setting:entry.tone,tone_label:tone.label}).eq('id',entry.matchedTrackId);}else{const {data:newTrack}=await sb.from('tracks').insert({project_id:project.id,title:entry.name,audio_url:result.url,mp3_url:result.url,position:tracks.length+i,peaks,tone_setting:entry.tone,tone_label:tone.label}).select().single();if(newTrack){await sb.from('revisions').insert({track_id:newTrack.id,project_id:project.id,version_number:1,label:'v1',audio_url:result.url,mp3_url:result.url,tone_setting:entry.tone,tone_label:tone.label,is_active:true});}}if(entry.name.trim())setToneMemory(entry.name.trim(),entry.tone);}setShowRevModal(false);setRevFiles([]);setRevStatus('');await loadProject(project.id);}catch(e){setRevStatus('Error: '+e.message);}setRevUploading(false);}
   const progress=duration?currentTime/duration:0;
   const rerunUsedTones=rerunTrack?(rerunTrack.revisions||[]).map(r=>r.tone_setting).filter(t=>t!=null):[];
+  useEffect(()=>{
+    if(!window.__pendingAutoActivate||!tracks.length)return;
+    const{preset,revisionId}=window.__pendingAutoActivate;
+    const track=tracks.find(t=>t.revisions?.some(r=>r.id===revisionId));
+    if(!track)return;
+    const rev=track.revisions?.find(r=>r.id===revisionId);
+    const master=rev?.masters?.find(m=>m.preset===preset&&m.status==='ready');
+    if(master){window.__pendingAutoActivate=null;setActiveMaster(master);setActiveSource('master');}
+  },[tracks]);
+
   useEffect(()=>{
     if(pendingSeek==null||!audioRef.current)return;
     const el=audioRef.current;
