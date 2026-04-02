@@ -1,20 +1,21 @@
 steps:
-  # Build the mastering container from the mastering/ subdirectory
+  # ── MASTERING SERVICE ──────────────────────────────────────────────
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-mastering'
     args:
       - 'build'
       - '-t'
       - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
       - 'mastering'
 
-  # Push to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-mastering'
     args:
       - 'push'
       - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
 
-  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-mastering'
     entrypoint: gcloud
     args:
       - 'run'
@@ -43,12 +44,58 @@ steps:
       - '--set-env-vars'
       - 'SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_KEY},VERCEL_URL=https://maastr-app.vercel.app'
 
+  # ── ENCODER SERVICE ────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-encoder'
+    args:
+      - 'build'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest'
+      - 'encoder'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-encoder'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-encoder'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'maastr-encoder'
+      - '--image'
+      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--concurrency'
+      - '25'
+      - '--min-instances'
+      - '1'
+      - '--max-instances'
+      - '5'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '300'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_KEY=${_SUPABASE_KEY},GCS_BUCKET_NAME=maastr-vibedev-audio,ENCODE_SECRET=${_ENCODE_SECRET}'
+
 substitutions:
   _SUPABASE_URL: ''
   _SUPABASE_KEY: ''
+  _ENCODE_SECRET: ''
 
 images:
   - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
+  - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
