@@ -7,11 +7,10 @@ export default function NotificationCenter({ user }) {
   const router = useRouter();
   const [notes, setNotes] = useState([]);
   const [uploads, setUploads] = useState([]);
-  const [masters, setMasters] = useState([]);
   const [tab, setTab] = useState('new');
   const [open, setOpen] = useState(false);
   const panelRef = useRef(null);
-  const trackedMasterIds = useRef(new Set());
+  const trackedMasterIds = useRef({});  // masterId -> uploadId
 
   const loadNotes = useCallback(async () => {
     if (!user) return;
@@ -33,93 +32,122 @@ export default function NotificationCenter({ user }) {
     return () => sb.removeChannel(sub);
   }, [user, loadNotes]);
 
-  // Masters realtime — updates when mastering completes
+  // Realtime: update upload row when master status changes
   useEffect(() => {
     if (!user) return;
     const sub = sb.channel('nc-masters')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'masters' }, (payload) => {
         const { id, status } = payload.new;
-        if (trackedMasterIds.current.has(id) && (status === 'ready' || status === 'failed')) {
-          setMasters(prev => prev.map(m => m.id === id ? { ...m, status, readyAt: Date.now(), progress: 100 } : m));
+        const uploadId = trackedMasterIds.current[id];
+        if (uploadId && (status === 'ready' || status === 'failed')) {
+          setUploads(prev => prev.map(u => u.id === uploadId
+            ? { ...u, phase: status === 'ready' ? 'done' : 'failed', masterProgress: 100, readyAt: Date.now() }
+            : u
+          ));
         }
       })
       .subscribe();
     return () => sb.removeChannel(sub);
   }, [user]);
 
-  // Auto-dismiss ready/failed masters after 8s
+  // Polling fallback for master completion
   useEffect(() => {
-    const done = masters.filter(m => (m.status === 'ready' || m.status === 'failed') && m.readyAt);
-    if (!done.length) return;
-    const timers = done.map(m => {
-      const delay = Math.max(0, 8000 - (Date.now() - m.readyAt));
-      return setTimeout(() => {
-        setMasters(prev => prev.filter(p => p.id !== m.id));
-        trackedMasterIds.current.delete(m.id);
-      }, delay);
-    });
-    return () => timers.forEach(clearTimeout);
-  }, [masters]);
-
-  // Polling fallback — queries Supabase every 4s for processing masters
-  // Belt-and-suspenders alongside realtime subscription
-  useEffect(() => {
-    const processingIds = masters.filter(m => m.status === 'processing').map(m => m.id);
-    if (!processingIds.length) return;
+    const masterIds = Object.keys(trackedMasterIds.current);
+    const mastering = uploads.filter(u => u.phase === 'mastering');
+    if (!masterIds.length || !mastering.length) return;
     const iv = setInterval(async () => {
       try {
-        const { data } = await sb.from('masters').select('id,status').in('id', processingIds);
+        const { data } = await sb.from('masters').select('id,status').in('id', masterIds);
         if (!data) return;
         data.forEach(row => {
           if (row.status === 'ready' || row.status === 'failed') {
-            setMasters(prev => prev.map(m =>
-              m.id === row.id ? { ...m, status: row.status, readyAt: Date.now(), progress: 100 } : m
-            ));
-            trackedMasterIds.current.delete(row.id);
+            const uploadId = trackedMasterIds.current[row.id];
+            if (uploadId) {
+              setUploads(prev => prev.map(u => u.id === uploadId
+                ? { ...u, phase: row.status === 'ready' ? 'done' : 'failed', masterProgress: 100, readyAt: Date.now() }
+                : u
+              ));
+              delete trackedMasterIds.current[row.id];
+            }
           }
         });
-      } catch(e) { console.warn('[NC] master poll error:', e.message); }
+      } catch(e) {}
     }, 4000);
     return () => clearInterval(iv);
-  }, [masters.filter(m => m.status === 'processing').map(m => m.id).join(',')]);
+  }, [uploads.filter(u=>u.phase==='mastering').length]);
 
-  // Progress ticker — advances processing masters toward 85% over their estimated duration
+  // Master progress ticker
   useEffect(() => {
-    const processing = masters.filter(m => m.status === 'processing' && m.startedAt);
-    if (!processing.length) return;
+    const mastering = uploads.filter(u => u.phase === 'mastering' && u.masterStartedAt);
+    if (!mastering.length) return;
     const iv = setInterval(() => {
-      setMasters(prev => prev.map(m => {
-        if (m.status !== 'processing' || !m.startedAt) return m;
-        const elapsed = Date.now() - m.startedAt;
-        const pct = Math.min(85, Math.round((elapsed / m.estimatedMs) * 85));
-        return { ...m, progress: pct };
+      setUploads(prev => prev.map(u => {
+        if (u.phase !== 'mastering' || !u.masterStartedAt) return u;
+        const elapsed = Date.now() - u.masterStartedAt;
+        const pct = Math.min(85, Math.round((elapsed / u.estimatedMs) * 85));
+        return { ...u, masterProgress: pct };
       }));
     }, 250);
     return () => clearInterval(iv);
-  }, [masters.filter(m => m.status === 'processing').length]);
+  }, [uploads.filter(u=>u.phase==='mastering').length]);
+
+  // Auto-dismiss done/failed rows after 8s
+  useEffect(() => {
+    const done = uploads.filter(u => (u.phase === 'done' || u.phase === 'failed') && u.readyAt);
+    if (!done.length) return;
+    const timers = done.map(u => {
+      const delay = Math.max(0, 8000 - (Date.now() - u.readyAt));
+      return setTimeout(() => setUploads(prev => prev.filter(p => p.id !== u.id)), delay);
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [uploads.filter(u=>u.phase==='done'||u.phase==='failed').length]);
+
+  // Inject pulse keyframe
+  useEffect(() => {
+    if (document.getElementById('nc-pulse-style')) return;
+    const s = document.createElement('style');
+    s.id = 'nc-pulse-style';
+    s.textContent = '@keyframes nc-pulse{0%,100%{opacity:.75}50%{opacity:.35}}';
+    document.head.appendChild(s);
+  }, []);
 
   useEffect(() => {
     window.nc_startUpload = (uploadId, label, projectId, projectName, total) => {
       setUploads(prev => [...prev.filter(u => u.id !== uploadId), {
-        id: uploadId, label, projectId, projectName, done: 0, total, status: 'uploading'
+        id: uploadId, label, projectId, projectName,
+        uploadProgress: 0, total,
+        phase: 'uploading',  // uploading | mastering | done | failed
+        masterProgress: 0, estimatedMs: 0, masterStartedAt: null, readyAt: null
       }]);
     };
     window.nc_updateUpload = (uploadId, done, total) => {
-      setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, done: Math.round(done/total*100), total } : u));
+      setUploads(prev => prev.map(u => u.id === uploadId
+        ? { ...u, uploadProgress: Math.round(done / total * 100), total }
+        : u
+      ));
     };
     window.nc_finishUpload = (uploadId) => {
-      setUploads(prev => prev.map(u => u.id === uploadId ? { ...u, done: 100, status: 'done' } : u));
+      setUploads(prev => prev.map(u => u.id === uploadId
+        ? { ...u, uploadProgress: 100 }
+        : u
+      ));
     };
     window.nc_startMaster = (masterId, trackName, projectId, fileSize) => {
-      trackedMasterIds.current.add(masterId);
-      // Estimate total pipeline time from file size (empirically derived):
-      // covers full pipeline: Railway + encoder download + ffmpeg + GCS upload
-      // 1.7MB → ~2.5s, 86MB → ~26.5s  →  2000 + bytes/3500
+      // Find the upload row for this project and transition it to mastering phase
       const estimatedMs = Math.max(3000, 2000 + fileSize / 3500);
-      setMasters(prev => [...prev.filter(m => m.id !== masterId), {
-        id: masterId, trackName, projectId, status: 'processing',
-        startedAt: Date.now(), estimatedMs, progress: 0
-      }]);
+      trackedMasterIds.current[masterId] = null; // will be set once we find the upload row
+      setUploads(prev => {
+        // Find most recent upload for this project
+        const idx = [...prev].reverse().findIndex(u => u.projectId === projectId);
+        if (idx === -1) return prev;
+        const realIdx = prev.length - 1 - idx;
+        const uploadId = prev[realIdx].id;
+        trackedMasterIds.current[masterId] = uploadId;
+        return prev.map((u, i) => i === realIdx
+          ? { ...u, label: trackName, phase: 'mastering', masterProgress: 0, estimatedMs, masterStartedAt: Date.now() }
+          : u
+        );
+      });
       setOpen(true);
       setTab('uploads');
     };
@@ -143,9 +171,8 @@ export default function NotificationCenter({ user }) {
 
   const unreadNotes = notes.filter(n => !n.resolved);
   const readNotes = notes.filter(n => n.resolved);
-  const activeUploads = uploads.filter(u => u.status !== 'done');
-  const activeMasters = masters.filter(m => m.status === 'processing');
-  const totalBadge = unreadNotes.length + activeMasters.length;
+  const activeUploads = uploads.filter(u => u.phase === 'uploading' || u.phase === 'mastering');
+  const totalBadge = unreadNotes.length + activeUploads.length;
 
   const markAllRead = async () => {
     const ids = unreadNotes.map(n => n.id);
@@ -159,12 +186,6 @@ export default function NotificationCenter({ user }) {
       ? `/player?project=${n.project_id}${n.track_id ? `&track=${n.track_id}` : ''}`
       : '/';
     router.push(url);
-  };
-
-  const goToUpload = (u) => {
-    if (!u.projectId) return;
-    setOpen(false);
-    router.push(`/player?project=${u.projectId}`);
   };
 
   const fmtTime = (iso) => {
@@ -194,52 +215,76 @@ export default function NotificationCenter({ user }) {
     </div>
   );
 
-  const masterRow = (m) => {
-    const isReady = m.status === 'ready';
-    const isFailed = m.status === 'failed';
-    const statusColor = isReady ? '#4caf50' : isFailed ? '#f44336' : 'var(--amber)';
-    const statusLabel = isReady ? '\u2713 Master ready' : isFailed ? '\u2717 Failed' : 'Mastering...';
+  const uploadRow = (u) => {
+    const isDone = u.phase === 'done';
+    const isFailed = u.phase === 'failed';
+    const isMastering = u.phase === 'mastering';
+    const isUploading = u.phase === 'uploading';
+
+    // Label
+    const statusLabel = isDone ? '\u2713 Done'
+      : isFailed ? '\u2717 Failed'
+      : isMastering ? 'Mastering...'
+      : u.uploadProgress + '%';
+
+    const statusColor = isDone ? '#4caf50' : isFailed ? '#f44336' : 'var(--amber)';
+
+    // The bar is a single track. During upload: amber fills left to right.
+    // During mastering: green eats the amber from left. Done: fully green.
+    const uploadPct = u.uploadProgress || 0;        // 0-100
+    const masterPct = u.masterProgress || 0;         // 0-100 of the mastered portion
+    // Green eats amber: green width = masterPct% of total, amber = remaining of upload (100%)
+    const greenWidth = isMastering || isDone || isFailed ? masterPct : 0;
+    const amberWidth = isDone ? 0 : isFailed ? 0 : isUploading ? uploadPct : 100; // amber is full during mastering
+
+    const isPulsing = isMastering && masterPct >= 84;
+
     return (
-      <div key={m.id} onClick={() => { setOpen(false); router.push(`/player?project=${m.projectId}`); }}
-        style={{padding:'14px',borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .15s'}}
+      <div key={u.id}
+        onClick={() => { if (u.projectId) { setOpen(false); router.push(`/player?project=${u.projectId}`); } }}
+        style={{padding:'14px',borderBottom:'1px solid var(--border)',cursor:u.projectId?'pointer':'default',transition:'background .15s'}}
         onMouseEnter={e => e.currentTarget.style.background='var(--surf2)'}
         onMouseLeave={e => e.currentTarget.style.background=''}
       >
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
           <div style={{display:'flex',alignItems:'center',gap:7}}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={statusColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              {isReady
-                ? <polyline points="20 6 9 17 4 12"/>
-                : isFailed
-                  ? <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>
-                  : <><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></>
-              }
-            </svg>
-            <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{m.trackName}</div>
+            {isMastering && (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+              </svg>
+            )}
+            <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.label || u.projectName}</div>
           </div>
           <div style={{fontFamily:'var(--fm)',fontSize:10,color:statusColor,fontWeight:600}}>{statusLabel}</div>
         </div>
-        <div style={{height:3,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
-          <div style={{height:'100%',borderRadius:2,background:statusColor,
-            width: isReady||isFailed ? '100%' : (m.progress || 0) + '%',
-            transition: isReady||isFailed ? 'width .4s' : 'width .25s',
-            animation: (!isReady && !isFailed && (m.progress||0) >= 84) ? 'nc-pulse 1.2s ease-in-out infinite' : 'none',
-            opacity: 1
+
+        {/* Single unified bar */}
+        <div style={{height:4,borderRadius:2,background:'var(--surf3)',overflow:'hidden',position:'relative'}}>
+          {/* Amber layer — upload fill or mastering remainder */}
+          <div style={{
+            position:'absolute',left:0,top:0,height:'100%',borderRadius:2,
+            background:'var(--amber)',
+            width: isDone || isFailed ? '100%' : isUploading ? uploadPct+'%' : '100%',
+            transition:'width .3s'
           }}/>
+          {/* Green layer — eats amber from the left during mastering */}
+          {(isMastering || isDone || isFailed) && (
+            <div style={{
+              position:'absolute',left:0,top:0,height:'100%',borderRadius:2,
+              background: isFailed ? '#f44336' : '#4caf50',
+              width: isDone || isFailed ? '100%' : greenWidth+'%',
+              transition: isDone || isFailed ? 'width .4s' : 'width .25s',
+              animation: isPulsing ? 'nc-pulse 1.2s ease-in-out infinite' : 'none'
+            }}/>
+          )}
         </div>
-        <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',marginTop:5}}>AI Mastering</div>
+
+        <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',marginTop:5}}>
+          {u.projectName || ''}
+        </div>
       </div>
     );
   };
-
-  // Inject keyframe for pulsing bar at 85%
-  useEffect(() => {
-    if (document.getElementById('nc-master-pulse')) return;
-    const s = document.createElement('style');
-    s.id = 'nc-master-pulse';
-    s.textContent = '@keyframes nc-pulse{0%,100%{opacity:.75}50%{opacity:.35}}';
-    document.head.appendChild(s);
-  }, []);
 
   return (
     <div style={{position:'relative'}} ref={panelRef}>
@@ -257,12 +302,12 @@ export default function NotificationCenter({ user }) {
       </button>
 
       {open && (
-        <div style={{position:'absolute',top:40,right:0,width:360,maxWidth:'calc(100vw - 32px)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',zIndex:300,overflow:'hidden'}}>
+        <div style={{position:'fixed',top:48,right:16,width:360,maxWidth:'calc(100vw - 32px)',background:'var(--surf)',border:'1px solid var(--border2)',borderRadius:14,boxShadow:'0 20px 60px rgba(0,0,0,.6)',zIndex:300,overflow:'hidden'}}>
           <div style={{display:'flex',borderBottom:'1px solid var(--border)',background:'var(--surf2)'}}>
             {[
-              {key:'new',  label:'New',     count:unreadNotes.length},
-              {key:'read', label:'Read',    count:readNotes.length},
-              {key:'uploads',label:'Uploads',count:activeUploads.length + activeMasters.length}
+              {key:'new',    label:'New',     count:unreadNotes.length},
+              {key:'read',   label:'Read',    count:readNotes.length},
+              {key:'uploads',label:'Uploads', count:activeUploads.length}
             ].map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 style={{flex:1,padding:'12px 8px',border:'none',background:'transparent',color:tab===t.key?'var(--amber)':'var(--t3)',fontFamily:'var(--fm)',fontSize:11,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',cursor:'pointer',borderBottom:tab===t.key?'2px solid var(--amber)':'2px solid transparent',display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
@@ -297,29 +342,9 @@ export default function NotificationCenter({ user }) {
 
           {tab === 'uploads' && (
             <div style={{maxHeight:400,overflowY:'auto'}}>
-              {uploads.length === 0 && masters.length === 0
+              {uploads.length === 0
                 ? <div style={{padding:32,textAlign:'center',color:'var(--t3)',fontSize:13,fontFamily:'var(--fm)'}}>No uploads yet</div>
-                : <>
-                    {masters.slice().reverse().map(m => masterRow(m))}
-                    {uploads.slice().reverse().map(u => (
-                      <div key={u.id} onClick={() => goToUpload(u)}
-                        style={{padding:'14px',borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background .15s'}}
-                        onMouseEnter={e => e.currentTarget.style.background='var(--surf2)'}
-                        onMouseLeave={e => e.currentTarget.style.background=''}
-                      >
-                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                          <div style={{fontFamily:'var(--fm)',fontSize:12,color:'var(--text)',fontWeight:600}}>{u.label||u.projectName}</div>
-                          <div style={{fontFamily:'var(--fm)',fontSize:10,color:u.status==='done'?'#4caf50':'var(--amber)',fontWeight:600}}>
-                            {u.status==='done'?'\u2713 Done':u.done+'%'}
-                          </div>
-                        </div>
-                        <div style={{height:4,borderRadius:2,background:'var(--surf3)',overflow:'hidden'}}>
-                          <div style={{height:'100%',borderRadius:2,background:u.status==='done'?'#4caf50':'var(--amber)',width:u.done+'%',transition:'width .3s'}}/>
-                        </div>
-                        <div style={{fontFamily:'var(--fm)',fontSize:10,color:'var(--t3)',marginTop:5}}>{u.projectName}</div>
-                      </div>
-                    ))}
-                  </>
+                : uploads.slice().reverse().map(u => uploadRow(u))
               }
             </div>
           )}
