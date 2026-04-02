@@ -235,7 +235,7 @@ def master():
     t = threading.Thread(
         target=process_master,
         args=(master_id, revision_id, project_id, audio_url, preset),
-        daemon=True
+        daemon=False
     )
     t.start()
     return jsonify({'status': 'processing', 'masterId': master_id})
