@@ -30,7 +30,7 @@ steps:
       - '1'
       - '--no-cpu-throttling'
       - '--max-instances'
-      - '20'
+      - '5'
       - '--min-instances'
       - '0'
       - '--memory'
