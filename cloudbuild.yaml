@@ -28,7 +28,7 @@ steps:
       - 'managed'
       - '--concurrency'
       - '1'
-      - '--cpu-always-allocated'
+      - '--no-cpu-throttling'
       - '--max-instances'
       - '20'
       - '--min-instances'
