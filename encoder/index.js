@@ -1,4 +1,4 @@
-// encoder v3.0 — ADC auth (no GCS service account key needed)
+// encoder v3.0 â ADC auth (no GCS service account key needed)
 const express = require('express');
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -25,7 +25,7 @@ async function getGCSToken() {
 async function uploadToGCS(token, objectKey, filePath, contentType) {
   const fileBuffer = fs.readFileSync(filePath);
   const res = await fetch(
-    `https://storage.googleapis.com/upload/storage/v1/b/${GCS_BUCKET}/o?uploadType=media&name=${encodeURIComponent(objectKey)}`,
+    `https://storage.googleapis.com/upload/storage/v1/b/${GCS_BUCKET}/o?uploadType=media&name=${encodeURIComponent(objectKey)}&predefinedAcl=publicRead`,
     { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': contentType }, body: fileBuffer }
   );
   if (!res.ok) throw new Error('GCS upload failed: ' + (await res.text()).substring(0, 200));
