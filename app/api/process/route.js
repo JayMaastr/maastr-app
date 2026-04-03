@@ -82,7 +82,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'trackId and audioUrl required' }, { status: 400 });
     }
 
-    // Run synchronously — Vercel keeps the function alive until we return
+    // Run synchronously â Vercel keeps the function alive until we return
     const { peaks, duration } = await extractPeaks(audioUrl);
     const maxPeak = Math.max(...peaks);
     if (maxPeak < 0.001) throw new Error('Peak extraction produced all zeros');
@@ -104,8 +104,8 @@ export async function POST(request) {
     if (ENCODER_URL && ENCODE_SECRET) {
       fetch(ENCODER_URL + '/encode', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-encode-secret': ENCODE_SECRET },
-        body: JSON.stringify({ trackId, projectId, audioUrl }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackId, projectId, audioUrl, secret: ENCODE_SECRET }),
       }).catch(e => console.error('[process] encoder fire-and-forget error:', e.message));
     }
 
