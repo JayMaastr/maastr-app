@@ -1,4 +1,6 @@
-// encoder v3.0 â ADC auth (no GCS service account key needed)
+// encoder v4.0 — synchronous processing (request held open for full CPU allocation)
+// Cloud Run throttles CPU to ~0% after response is sent.
+// Solution: keep the HTTP request open, do all work, THEN respond.
 const express = require('express');
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -18,18 +20,17 @@ app.use(express.json());
 
 async function getGCSToken() {
   const client = await auth.getClient();
-  const token = await client.getAccessToken();
-  return token.token;
+  const t = await client.getAccessToken();
+  return t.token;
 }
 
 async function uploadToGCS(token, objectKey, filePath, contentType) {
   const fileBuffer = fs.readFileSync(filePath);
   const res = await fetch(
-    `https://storage.googleapis.com/upload/storage/v1/b/${GCS_BUCKET}/o?uploadType=media&name=${encodeURIComponent(objectKey)}&predefinedAcl=publicRead`,
+    `https://storage.googleapis.com/upload/storage/v1/b/${GCS_BUCKET}/o?uploadType=media&name=${encodeURIComponent(objectKey)}`,
     { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': contentType }, body: fileBuffer }
   );
   if (!res.ok) throw new Error('GCS upload failed: ' + (await res.text()).substring(0, 200));
-  return `https://storage.googleapis.com/${GCS_BUCKET}/${objectKey}`;
 }
 
 async function updateMasterHLS(masterId, hlsUrl) {
@@ -38,62 +39,77 @@ async function updateMasterHLS(masterId, hlsUrl) {
     headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({ hls_url: hlsUrl, status: 'ready', completed_at: new Date().toISOString() })
   });
-  if (!res.ok) console.error('[encode] supabase patch failed:', res.status, await res.text());
-  return res.ok;
+  if (!res.ok) console.error('[encode] supabase update failed:', res.status);
 }
 
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'maastr-encoder', version: '3.0' }));
-app.get('/', (req, res) => res.json({ status: 'ok', service: 'maastr-encoder', version: '3.0' }));
+async function updateTrackHLS(trackId, hlsUrl) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/tracks?id=eq.${trackId}`, {
+    method: 'PATCH',
+    headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hls_url: hlsUrl })
+  });
+  if (!res.ok) console.error('[encode] supabase track update failed:', res.status);
+}
+
+app.get('/health', (req, res) => res.json({ status: 'ok', version: '4.0' }));
+app.get('/', (req, res) => res.json({ status: 'ok', version: '4.0' }));
 
 app.post('/encode', async (req, res) => {
-  const { masterId, projectId, audioUrl, secret } = req.body;
+  const { masterId, trackId, projectId, audioUrl, secret } = req.body;
   if (secret !== APP_SECRET) return res.status(403).json({ error: 'forbidden' });
-  if (!masterId || !projectId || !audioUrl) return res.status(400).json({ error: 'masterId, projectId, audioUrl required' });
+  if (!projectId || !audioUrl || (!masterId && !trackId)) {
+    return res.status(400).json({ error: 'projectId, audioUrl, and masterId or trackId required' });
+  }
 
-  res.json({ status: 'encoding', masterId });
+  const jobId = masterId || trackId;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'maastr-'));
+  const wavPath = path.join(tmpDir, 'source.wav');
+  const hlsDir = path.join(tmpDir, 'hls');
+  fs.mkdirSync(hlsDir);
 
-  (async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'maastr-'));
-    const wavPath = path.join(tmpDir, 'source.wav');
-    const hlsDir = path.join(tmpDir, 'hls');
-    fs.mkdirSync(hlsDir);
-    try {
-      console.log('[encode] downloading WAV:', audioUrl);
-      const wavRes = await fetch(audioUrl);
-      if (!wavRes.ok) throw new Error('WAV download failed: ' + wavRes.status);
-      fs.writeFileSync(wavPath, await wavRes.buffer());
-      console.log('[encode] WAV downloaded, running ffmpeg...');
+  try {
+    console.log('[encode] downloading:', audioUrl);
+    const wavRes = await fetch(audioUrl);
+    if (!wavRes.ok) throw new Error('WAV download failed: ' + wavRes.status);
+    fs.writeFileSync(wavPath, await wavRes.buffer());
+    console.log('[encode] downloaded', (fs.statSync(wavPath).size/1024/1024).toFixed(1) + 'MB');
 
-      const m3u8Path = path.join(hlsDir, 'playlist.m3u8');
-      await new Promise((resolve, reject) => {
-        execFile('ffmpeg', [
-          '-i', wavPath, '-c:a', 'aac', '-b:a', '192k',
-          '-hls_time', '10', '-hls_list_size', '0',
-          '-hls_segment_filename', path.join(hlsDir, 'segment_%04d.ts'),
-          '-hls_flags', 'independent_segments', m3u8Path
-        ], (err, stdout, stderr) => {
-          if (err) { console.error('[encode] ffmpeg error:', stderr); reject(err); } else resolve();
-        });
+    const m3u8Path = path.join(hlsDir, 'playlist.m3u8');
+    await new Promise((resolve, reject) => {
+      execFile('ffmpeg', [
+        '-i', wavPath, '-c:a', 'aac', '-b:a', '192k',
+        '-hls_time', '10', '-hls_list_size', '0',
+        '-hls_segment_filename', path.join(hlsDir, 'segment_%04d.ts'),
+        '-hls_flags', 'independent_segments', m3u8Path
+      ], { timeout: 300000 }, (err, stdout, stderr) => {
+        if (err) { console.error('[encode] ffmpeg failed:', stderr?.substring(0,500)); reject(err); }
+        else resolve();
       });
-      console.log('[encode] ffmpeg done, uploading to GCS...');
+    });
+    console.log('[encode] ffmpeg done');
 
-      const token = await getGCSToken();
-      const hlsBase = `projects/${projectId}/hls/${masterId}`;
-      for (const file of fs.readdirSync(hlsDir)) {
-        const ct = file.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/MP2T';
-        await uploadToGCS(token, `${hlsBase}/${file}`, path.join(hlsDir, file), ct);
-      }
-
-      const hlsUrl = `https://storage.googleapis.com/${GCS_BUCKET}/${hlsBase}/playlist.m3u8`;
-      await updateMasterHLS(masterId, hlsUrl);
-      console.log('[encode] done:', hlsUrl);
-    } catch (e) {
-      console.error('[encode] FAILED:', e.message);
-    } finally {
-      try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+    const token = await getGCSToken();
+    const hlsBase = `projects/${projectId}/hls/${jobId}`;
+    const files = fs.readdirSync(hlsDir);
+    for (const file of files) {
+      const ct = file.endsWith('.m3u8') ? 'application/x-mpegURL' : 'video/MP2T';
+      await uploadToGCS(token, `${hlsBase}/${file}`, path.join(hlsDir, file), ct);
     }
-  })();
+
+    const hlsUrl = `https://storage.googleapis.com/${GCS_BUCKET}/${hlsBase}/playlist.m3u8`;
+    if (masterId) await updateMasterHLS(masterId, hlsUrl);
+    else await updateTrackHLS(trackId, hlsUrl);
+
+    console.log('[encode] done:', hlsUrl);
+    res.json({ status: 'done', hlsUrl, files: files.length });
+
+  } catch (e) {
+    console.error('[encode] FAILED:', e.message);
+    res.status(500).json({ error: e.message });
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
+  }
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log('maastr-encoder v3.0 listening on', PORT));
+app.listen(PORT, () => console.log('maastr-encoder v4.0 on port', PORT));
