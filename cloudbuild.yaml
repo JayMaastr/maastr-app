@@ -1,5 +1,5 @@
 steps:
-  # ââ MASTERING SERVICE ââââââââââââââââââââââââââââââââââââââââââââââ
+  # MASTERING SERVICE
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-mastering'
     args: ['build','-t','us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest','mastering']
@@ -34,9 +34,9 @@ steps:
     entrypoint: bash
     args:
       - -c
-      - gcloud run services add-iam-policy-binding maastr-mastering --region=us-central1 --member=allUsers --role=roles/run.invoker || echo "IAM binding skipped (org policy)"
+      - gcloud run services add-iam-policy-binding maastr-mastering --region=us-central1 --member=allUsers --role=roles/run.invoker || echo 'IAM skipped'
 
-  # ââ ENCODER SERVICE ââââââââââââââââââââââââââââââââââââââââââââââââ
+  # ENCODER SERVICE
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-encoder'
     args: ['build','-t','us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest','encoder']
@@ -58,7 +58,6 @@ steps:
       - --platform=managed
       - --concurrency=25
       - --min-instances=1
-      - --no-cpu-throttling
       - --max-instances=5
       - --memory=1Gi
       - --cpu=2
@@ -71,7 +70,7 @@ steps:
     entrypoint: bash
     args:
       - -c
-      - gcloud run services add-iam-policy-binding maastr-encoder --region=us-central1 --member=allUsers --role=roles/run.invoker || echo "IAM binding skipped (org policy)"
+      - gcloud run services add-iam-policy-binding maastr-encoder --region=us-central1 --member=allUsers --role=roles/run.invoker || echo 'IAM skipped'
 
 substitutions:
   _SUPABASE_URL: ''
