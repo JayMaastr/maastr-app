@@ -1,4 +1,4 @@
-// encoder v4.0 â synchronous processing (request held open for full CPU allocation)
+// encoder v4.0 Ã¢ÂÂ synchronous processing (request held open for full CPU allocation)
 // Cloud Run throttles CPU to ~0% after response is sent.
 // Solution: keep the HTTP request open, do all work, THEN respond.
 const express = require('express');
@@ -16,9 +16,9 @@ const app = express();
 app.use(express.json());
 
 async function getGCSToken() {
-  // Use GCP metadata server — always available in Cloud Run, no library needed
+  // Use GCP metadata server â always available in Cloud Run, no library needed
   const res = await fetch(
-    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token',
+    'http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token',
     { headers: { 'Metadata-Flavor': 'Google' } }
   );
   if (!res.ok) throw new Error('Metadata token fetch failed: ' + res.status);
