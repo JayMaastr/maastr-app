@@ -1,7 +1,7 @@
 # maastr mastering service v4.1
 # DawDreamer-native processing:
 #   EQ: make_filter_processor high_shelf inside the engine graph
-#   Gain: numpy multiply on get_audio() output (scalar â effectively free)
+#   Gain: numpy multiply on get_audio() output (scalar Ã¢ÂÂ effectively free)
 import os, base64, tempfile, subprocess, threading, time
 from pathlib import Path
 import numpy as np
@@ -13,7 +13,6 @@ app = Flask(__name__)
 
 SECRET       = os.environ.get('MASTERING_SECRET', '')
 GCS_BUCKET   = os.environ.get('GCS_BUCKET_NAME', 'maastr-vibedev-audio')
-GCS_KEY_B64  = os.environ.get('GCS_SERVICE_ACCOUNT_KEY', '')
 SUPABASE_URL = os.environ.get('NEXT_PUBLIC_SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 PORT         = int(os.environ.get('PORT', 3002))
@@ -51,30 +50,14 @@ def patch_supabase(master_id, data):
     log(f"supabase patch {master_id[:8]} -> {r.status_code}")
 
 def gcs_upload(local_path, gcs_key):
-    import json as _json, time as _time, base64 as _b64
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-    from cryptography.hazmat.backends import default_backend
-    key_info = _json.loads(base64.b64decode(GCS_KEY_B64))
-    pk = serialization.load_pem_private_key(
-        key_info['private_key'].encode(), password=None, backend=default_backend()
+    # Use GCP metadata server — always available in Cloud Run, no key file needed
+    import urllib.request as _ureq, json as _json
+    req = _ureq.Request(
+        'http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token',
+        headers={'Metadata-Flavor': 'Google'}
     )
-    now = int(_time.time())
-    claim = {
-        'iss': key_info['client_email'],
-        'scope': 'https://www.googleapis.com/auth/devstorage.read_write',
-        'aud': 'https://oauth2.googleapis.com/token',
-        'exp': now + 3600, 'iat': now
-    }
-    hdr = _b64.urlsafe_b64encode(_json.dumps({'alg':'RS256','typ':'JWT'}).encode()).rstrip(b'=')
-    pay = _b64.urlsafe_b64encode(_json.dumps(claim).encode()).rstrip(b'=')
-    sig_input = hdr + b'.' + pay
-    sig = pk.sign(sig_input, padding.PKCS1v15(), hashes.SHA256())
-    jwt = sig_input + b'.' + _b64.urlsafe_b64encode(sig).rstrip(b'=')
-    tok = requests.post(
-        'https://oauth2.googleapis.com/token',
-        data={'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer', 'assertion': jwt.decode()}
-    ).json()['access_token']
+    with _ureq.urlopen(req, timeout=5) as resp:
+        tok = _json.loads(resp.read())['access_token']
     with open(local_path, 'rb') as f:
         data = f.read()
     ext = Path(local_path).suffix
@@ -129,14 +112,14 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
 
             # Step 3: DawDreamer processing
             # Per docs: make_playback_processor expects (channels, frames)
-            log(f"step 3: DawDreamer â gain={gain_db}dB shelf={shelf_db}dB@8kHz (100% inside engine)...")
+            log(f"step 3: DawDreamer Ã¢ÂÂ gain={gain_db}dB shelf={shelf_db}dB@8kHz (100% inside engine)...")
             import dawdreamer as daw
 
             engine = daw.RenderEngine(sample_rate, 512)
             audio_chf = np.ascontiguousarray(audio_data.T, dtype=np.float32)  # (channels, frames)
             playback = engine.make_playback_processor("playback", audio_chf)
 
-            # Gain node â Faust processor inside DawDreamer engine
+            # Gain node Ã¢ÂÂ Faust processor inside DawDreamer engine
             gain_proc = engine.make_faust_processor("gain")
             gain_proc.set_dsp_string(
                 f"import(\"stdfaust.lib\"); "
@@ -144,7 +127,7 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
                 f"process = _*gain, _*gain;"
             )
 
-            # Build graph: playback [â shelf if EQ] â gain â output
+            # Build graph: playback [Ã¢ÂÂ shelf if EQ] Ã¢ÂÂ gain Ã¢ÂÂ output
             if shelf_db != 0.0:
                 shelf = engine.make_filter_processor("shelf", "high_shelf", 8000.0, 0.707, shelf_db)
                 engine.load_graph([
@@ -160,13 +143,13 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
 
             # engine.render() takes SECONDS as a float
             engine.render(duration_sec)
-            out = engine.get_audio()  # (channels, frames) â already processed by DawDreamer
+            out = engine.get_audio()  # (channels, frames) Ã¢ÂÂ already processed by DawDreamer
 
             log(f"step 3: done in {time.time()-t0:.1f}s | "
                 f"in_peak={float(np.max(np.abs(audio_chf))):.4f} "
                 f"out_peak={float(np.max(np.abs(out))):.4f} shape={out.shape}")
 
-            # Step 4: write 24-bit WAV â no post-processing, DawDreamer output direct to disk
+            # Step 4: write 24-bit WAV Ã¢ÂÂ no post-processing, DawDreamer output direct to disk
             out_gained = np.clip(out.T, -1.0, 1.0).astype(np.float32)  # clip only, no gain
             out_wav = f"{tmpdir}/mastered.wav"
             sf.write(out_wav, out_gained, sample_rate, subtype='PCM_24')
@@ -190,21 +173,25 @@ def process_master(master_id, revision_id, project_id, audio_url, preset):
                 'peaks': peaks,
             })
             if VERCEL_URL:
-                try:
-                    requests.post(
-                        f"{VERCEL_URL}/api/encode-master",
-                        json={
-                            'masterId': master_id,
-                            'projectId': project_id,
-                            'audioUrl': audio_public_url,
-                            'secret': SECRET
-                        },
-                        timeout=10
-                    )
-                    log(f"step 6: encode-master triggered in {time.time()-t0:.1f}s")
-                except Exception as enc_err:
-                    log(f"step 6: encode-master call failed: {enc_err}")
-                    patch_supabase(master_id, {'status': 'failed', 'error': f'encoder: {str(enc_err)[:200]}'})
+                # Fire-and-forget in background thread — encode-master takes 15-30s
+                # DawDreamer's job is done; encoder updates masters.hls_url + status:ready
+                def _call_encode_master():
+                    try:
+                        requests.post(
+                            f"{VERCEL_URL}/api/encode-master",
+                            json={
+                                'masterId': master_id,
+                                'projectId': project_id,
+                                'audioUrl': audio_public_url,
+                                'secret': SECRET
+                            },
+                            timeout=90
+                        )
+                        log("step 6: encode-master completed")
+                    except Exception as enc_err:
+                        log(f"step 6: encode-master failed: {enc_err}")
+                threading.Thread(target=_call_encode_master, daemon=False).start()
+                log(f"step 6: encode-master fired async in {time.time()-t0:.1f}s")
             else:
                 log("step 6: VERCEL_URL not set, skipping HLS")
             log(f"DONE in {time.time()-t0:.1f}s")
