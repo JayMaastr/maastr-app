@@ -6,7 +6,6 @@ export async function GET() {
     const bucket = process.env.GCS_BUCKET_NAME || 'maastr-vibedev-audio';
     if (!keyB64) return NextResponse.json({ error: 'GCS_SERVICE_ACCOUNT_KEY not set' }, { status: 500 });
 
-    // Parse SA key and get OAuth2 token
     const key = JSON.parse(Buffer.from(keyB64, 'base64').toString('utf8'));
     const now = Math.floor(Date.now() / 1000);
     const { createSign } = await import('crypto');
@@ -44,19 +43,37 @@ export async function GET() {
     });
     const corsData = await corsRes.json();
 
-    // 2. Set default object ACL to publicRead
-    const aclRes = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/defaultObjectAcl`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + access_token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entity: 'allUsers', role: 'READER' })
+    // 2. Get existing bucket IAM policy
+    const getIamRes = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/iam`, {
+      headers: { Authorization: 'Bearer ' + access_token }
     });
-    const aclData = await aclRes.json();
+    const iamPolicy = await getIamRes.json();
+
+    // 3. Add allUsers:objectViewer if not already present
+    const bindings = iamPolicy.bindings || [];
+    const viewerBinding = bindings.find(b => b.role === 'roles/storage.objectViewer');
+    if (viewerBinding) {
+      if (!viewerBinding.members.includes('allUsers')) {
+        viewerBinding.members.push('allUsers');
+      }
+    } else {
+      bindings.push({ role: 'roles/storage.objectViewer', members: ['allUsers'] });
+    }
+
+    // 4. Set updated IAM policy
+    const setIamRes = await fetch(`https://storage.googleapis.com/storage/v1/b/${bucket}/iam`, {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer ' + access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...iamPolicy, bindings })
+    });
+    const iamData = await setIamRes.json();
 
     return NextResponse.json({
       cors: corsRes.status,
-      corsData,
-      acl: aclRes.status,
-      aclData
+      corsOk: corsRes.ok,
+      iam: setIamRes.status,
+      iamOk: setIamRes.ok,
+      iamError: iamData.error?.message || null
     });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
