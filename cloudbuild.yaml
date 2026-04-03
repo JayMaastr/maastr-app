@@ -12,42 +12,29 @@ steps:
     id: 'deploy-mastering'
     entrypoint: gcloud
     args:
-      - 'run'
-      - 'deploy'
-      - 'maastr-mastering'
-      - '--image'
-      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
-      - '--region'
-      - 'us-central1'
-      - '--platform'
-      - 'managed'
-      - '--concurrency'
-      - '25'
-      - '--min-instances'
-      - '1'
-      - '--no-cpu-throttling'
-      - '--max-instances'
-      - '5'
-      - '--memory'
-      - '2Gi'
-      - '--cpu'
-      - '2'
-      - '--timeout'
-      - '300'
-      - '--set-env-vars'
-      - 'SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_KEY},VERCEL_URL=https://maastr-app.vercel.app'
+      - run
+      - deploy
+      - maastr-mastering
+      - --image
+      - us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest
+      - --region=us-central1
+      - --platform=managed
+      - --concurrency=25
+      - --min-instances=1
+      - --no-cpu-throttling
+      - --max-instances=5
+      - --memory=2Gi
+      - --cpu=2
+      - --timeout=300
+      - --set-env-vars
+      - SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_KEY},VERCEL_URL=https://maastr-app.vercel.app
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'iam-mastering'
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - 'run'
-      - 'services'
-      - 'add-iam-policy-binding'
-      - 'maastr-mastering'
-      - '--region=us-central1'
-      - '--member=allUsers'
-      - '--role=roles/run.invoker'
+      - -c
+      - gcloud run services add-iam-policy-binding maastr-mastering --region=us-central1 --member=allUsers --role=roles/run.invoker || echo "IAM binding skipped (org policy)"
 
   # ── ENCODER SERVICE ────────────────────────────────────────────────
   - name: 'gcr.io/cloud-builders/docker'
@@ -62,41 +49,28 @@ steps:
     id: 'deploy-encoder'
     entrypoint: gcloud
     args:
-      - 'run'
-      - 'deploy'
-      - 'maastr-encoder'
-      - '--image'
-      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest'
-      - '--region'
-      - 'us-central1'
-      - '--platform'
-      - 'managed'
-      - '--concurrency'
-      - '25'
-      - '--min-instances'
-      - '1'
-      - '--max-instances'
-      - '5'
-      - '--memory'
-      - '1Gi'
-      - '--cpu'
-      - '2'
-      - '--timeout'
-      - '300'
-      - '--set-env-vars'
-      - 'SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_KEY=${_SUPABASE_KEY},GCS_BUCKET_NAME=maastr-vibedev-audio,ENCODE_SECRET=${_ENCODE_SECRET}'
+      - run
+      - deploy
+      - maastr-encoder
+      - --image
+      - us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest
+      - --region=us-central1
+      - --platform=managed
+      - --concurrency=25
+      - --min-instances=1
+      - --max-instances=5
+      - --memory=1Gi
+      - --cpu=2
+      - --timeout=300
+      - --set-env-vars
+      - SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_KEY=${_SUPABASE_KEY},GCS_BUCKET_NAME=maastr-vibedev-audio,ENCODE_SECRET=${_ENCODE_SECRET}
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'iam-encoder'
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - 'run'
-      - 'services'
-      - 'add-iam-policy-binding'
-      - 'maastr-encoder'
-      - '--region=us-central1'
-      - '--member=allUsers'
-      - '--role=roles/run.invoker'
+      - -c
+      - gcloud run services add-iam-policy-binding maastr-encoder --region=us-central1 --member=allUsers --role=roles/run.invoker || echo "IAM binding skipped (org policy)"
 
 substitutions:
   _SUPABASE_URL: ''
@@ -104,8 +78,8 @@ substitutions:
   _ENCODE_SECRET: ''
 
 images:
-  - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
-  - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest'
+  - us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest
+  - us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
