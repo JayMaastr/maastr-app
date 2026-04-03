@@ -43,6 +43,9 @@ export function UploadProvider({ children }) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       activeRef.current[ncId] = xhr;
+      activeRef.current[ncId].name = t.name;
+      activeRef.current[ncId].projectId = projectId;
+      activeRef.current[ncId].done = false;
       xhr.open('PUT', url);
       xhr.setRequestHeader('Content-Type', file.type || 'audio/wav');
       xhr.upload.onprogress = e => {
