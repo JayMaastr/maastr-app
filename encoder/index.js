@@ -1,4 +1,4 @@
-// encoder v4.0 — synchronous processing (request held open for full CPU allocation)
+// encoder v4.0 â synchronous processing (request held open for full CPU allocation)
 // Cloud Run throttles CPU to ~0% after response is sent.
 // Solution: keep the HTTP request open, do all work, THEN respond.
 const express = require('express');
@@ -7,21 +7,23 @@ const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
 const os = require('os');
-const { GoogleAuth } = require('google-auth-library');
 
 const APP_SECRET = process.env.ENCODE_SECRET || 'secret';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 const GCS_BUCKET = process.env.GCS_BUCKET_NAME || 'maastr-vibedev-audio';
-
-const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/devstorage.read_write'] });
 const app = express();
 app.use(express.json());
 
 async function getGCSToken() {
-  const client = await auth.getClient();
-  const t = await client.getAccessToken();
-  return t.token;
+  // Use GCP metadata server — always available in Cloud Run, no library needed
+  const res = await fetch(
+    'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token',
+    { headers: { 'Metadata-Flavor': 'Google' } }
+  );
+  if (!res.ok) throw new Error('Metadata token fetch failed: ' + res.status);
+  const data = await res.json();
+  return data.access_token;
 }
 
 async function uploadToGCS(token, objectKey, filePath, contentType) {
