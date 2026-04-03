@@ -2,17 +2,11 @@ steps:
   # ── MASTERING SERVICE ──────────────────────────────────────────────
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-mastering'
-    args:
-      - 'build'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
-      - 'mastering'
+    args: ['build','-t','us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest','mastering']
 
   - name: 'gcr.io/cloud-builders/docker'
     id: 'push-mastering'
-    args:
-      - 'push'
-      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest'
+    args: ['push','us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest']
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-mastering'
@@ -40,24 +34,29 @@ steps:
       - '2'
       - '--timeout'
       - '300'
-      - '--allow-unauthenticated'
       - '--set-env-vars'
       - 'SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_KEY},VERCEL_URL=https://maastr-app.vercel.app'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'iam-mastering'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'services'
+      - 'add-iam-policy-binding'
+      - 'maastr-mastering'
+      - '--region=us-central1'
+      - '--member=allUsers'
+      - '--role=roles/run.invoker'
 
   # ── ENCODER SERVICE ────────────────────────────────────────────────
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build-encoder'
-    args:
-      - 'build'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest'
-      - 'encoder'
+    args: ['build','-t','us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest','encoder']
 
   - name: 'gcr.io/cloud-builders/docker'
     id: 'push-encoder'
-    args:
-      - 'push'
-      - 'us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest'
+    args: ['push','us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest']
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-encoder'
@@ -84,9 +83,20 @@ steps:
       - '2'
       - '--timeout'
       - '300'
-      - '--allow-unauthenticated'
       - '--set-env-vars'
       - 'SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_KEY=${_SUPABASE_KEY},GCS_BUCKET_NAME=maastr-vibedev-audio,ENCODE_SECRET=${_ENCODE_SECRET}'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'iam-encoder'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'services'
+      - 'add-iam-policy-binding'
+      - 'maastr-encoder'
+      - '--region=us-central1'
+      - '--member=allUsers'
+      - '--role=roles/run.invoker'
 
 substitutions:
   _SUPABASE_URL: ''
