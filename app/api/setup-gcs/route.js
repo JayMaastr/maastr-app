@@ -35,7 +35,7 @@ export async function GET() {
       body: JSON.stringify({
         cors: [{
           origin: ['*'],
-          method: ['GET', 'HEAD', 'OPTIONS'],
+          method: ['GET', 'HEAD', 'OPTIONS', 'PUT'],
           responseHeader: ['Content-Type', 'Content-Length', 'Accept-Ranges', 'Range'],
           maxAgeSeconds: 3600
         }]
