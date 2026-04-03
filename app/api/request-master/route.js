@@ -58,9 +58,12 @@ export async function POST(request) {
     const masteringUrl = process.env.MASTERING_URL;
     const masteringSecret = process.env.MASTERING_SECRET;
     if (masteringUrl) {
-      await fetch(`${masteringUrl}/master`, {
+      // Set to processing before fire-and-forget so NC updates immediately
+      await sb.from('masters').update({ status: 'processing' }).eq('id', master.id);
+      fetch(`${masteringUrl}/master`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10000),
         body: JSON.stringify({
           masterId: master.id,
           revisionId,
@@ -69,7 +72,7 @@ export async function POST(request) {
           preset,
           secret: masteringSecret
         })
-      }).catch(e => console.error('[request-master] mastering service error:', e.message));
+      }).catch(e => console.error('[request-master] mastering fire:', e.message));
     } else {
       console.log('[request-master] no MASTERING_URL set — stub mode, master row created as pending');
     }
