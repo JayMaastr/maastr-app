@@ -26,6 +26,7 @@ steps:
       - --memory=2Gi
       - --cpu=2
       - --timeout=300
+      - --ingress=all
       - --set-env-vars
       - NEXT_PUBLIC_SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_KEY},VERCEL_URL=https://maastr-app.vercel.app,MASTERING_SECRET=${_MASTERING_SECRET},GCS_BUCKET_NAME=maastr-vibedev-audio
 
@@ -62,6 +63,7 @@ steps:
       - --memory=1Gi
       - --cpu=2
       - --timeout=300
+      - --ingress=all
       - --set-env-vars
       - SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_KEY=${_SUPABASE_KEY},GCS_BUCKET_NAME=maastr-vibedev-audio,ENCODE_SECRET=${_ENCODE_SECRET}
 
