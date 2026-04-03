@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+export const maxDuration = 60;
+
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Valid presets — matches TONES array short codes (Warm/Neutral/Bright x Loud/Normal/Gentle)
+// Valid presets â matches TONES array short codes (Warm/Neutral/Bright x Loud/Normal/Gentle)
 // mastering service: https://mastering-production-008a.up.railway.app
 const VALID_PRESETS = ['W+L','N+L','B+L','W+N','N+N','B+N','W+G','N+G','B+G'];
 
@@ -32,7 +34,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'revision not found' }, { status: 404 });
     }
 
-    // Upsert master row — if already exists just return its current state
+    // Upsert master row â if already exists just return its current state
     const { data: master, error: masterErr } = await sb
       .from('masters')
       .upsert({
@@ -54,27 +56,31 @@ export async function POST(request) {
       return NextResponse.json({ error: masterErr.message }, { status: 500 });
     }
 
-    // Fire mastering service (stub for now — will call DawDreamer service later)
+    // Fire mastering service (stub for now â will call DawDreamer service later)
     const masteringUrl = process.env.MASTERING_URL;
     const masteringSecret = process.env.MASTERING_SECRET;
     if (masteringUrl) {
       // Set to processing before fire-and-forget so NC updates immediately
       await sb.from('masters').update({ status: 'processing' }).eq('id', master.id);
-      fetch(`${masteringUrl}/master`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(10000),
-        body: JSON.stringify({
-          masterId: master.id,
-          revisionId,
-          projectId: revision.project_id,
-          audioUrl: revision.audio_url,
-          preset,
-          secret: masteringSecret
-        })
-      }).catch(e => console.error('[request-master] mastering fire:', e.message));
+      try {
+        await fetch(`${masteringUrl}/master`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(10000),
+          body: JSON.stringify({
+            masterId: master.id,
+            revisionId,
+            projectId: revision.project_id,
+            audioUrl: revision.audio_url,
+            preset,
+            secret: masteringSecret
+          })
+        });
+      } catch(e) {
+        console.error('[request-master] mastering fire:', e.message);
+      }
     } else {
-      console.log('[request-master] no MASTERING_URL set — stub mode, master row created as pending');
+      console.log('[request-master] no MASTERING_URL set â stub mode, master row created as pending');
     }
 
     return NextResponse.json({ status: 'queued', masterId: master.id, preset });
