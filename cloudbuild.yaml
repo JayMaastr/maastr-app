@@ -26,8 +26,8 @@ steps:
       - --memory=2Gi
       - --cpu=2
       - --timeout=300
-      - --set-env-vars
-      - SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_KEY},VERCEL_URL=https://maastr-app.vercel.app
+      - --update-env-vars
+      - NEXT_PUBLIC_SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${_SUPABASE_KEY},VERCEL_URL=https://maastr-app.vercel.app
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'iam-mastering'
@@ -62,7 +62,7 @@ steps:
       - --memory=1Gi
       - --cpu=2
       - --timeout=300
-      - --set-env-vars
+      - --update-env-vars
       - SUPABASE_URL=${_SUPABASE_URL},SUPABASE_SERVICE_KEY=${_SUPABASE_KEY},GCS_BUCKET_NAME=maastr-vibedev-audio,ENCODE_SECRET=${_ENCODE_SECRET}
 
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
