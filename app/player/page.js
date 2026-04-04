@@ -554,7 +554,147 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
   async function submitRerun(){if(!rerunTrack||rerunTone===null)return;setRerunUploading(true);try{const activeRev=rerunTrack.revisions?.find(r=>r.is_active)||rerunTrack.revisions?.[rerunTrack.revisions.length-1];if(!activeRev){const revRes=await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/revisions`,{method:'POST',headers:{'apikey':process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,'Authorization':'Bearer '+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,'Content-Type':'application/json','Prefer':'return=representation'},body:JSON.stringify({track_id:rerunTrack.id,project_id:project.id,audio_url:rerunTrack.audio_url,hls_url:rerunTrack.hls_url,duration:rerunTrack.duration,version_number:1,label:'v1',is_active:true})});const [newRev]=await revRes.json();if(!newRev)return;const rmRes=await fetch('/api/request-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revisionId:newRev.id,preset:TONES[rerunTone]?.short||rerunTone})});setRerunUploading(false);setRerunTrack(null);if(rmRes.ok)await loadProject(project.id);return;};setRerunStatus('Fetching audio');const resp=await fetch(activeRev.audio_url||activeRev.mp3_url);const blob=await resp.blob();const fname='rerun_'+Date.now()+'.wav';setRerunStatus('Uploading');const r=await fetch(UPLOAD_WORKER_URL,{method:'POST',headers:{'X-File-Name':fname,'X-Project-Id':project.id,'Content-Type':'audio/wav'},body:blob});const result=await r.json();if(!result.url)throw new Error('Upload failed');const {data:existing}=await sb.from('revisions').select('version_number').eq('track_id',rerunTrack.id).order('version_number',{ascending:false}).limit(1);const nextVer=(existing?.[0]?.version_number||1)+1;await sb.from('revisions').update({is_active:false}).eq('track_id',rerunTrack.id);const tone=TONES[rerunTone];await sb.from('revisions').insert({track_id:rerunTrack.id,project_id:project.id,version_number:nextVer,label:'v'+nextVer,audio_url:result.url,mp3_url:result.url,tone_setting:rerunTone,tone_label:tone.label,is_active:true});if(rerunTrack.title)setToneMemory(rerunTrack.title,rerunTone);setRerunTrack(null);setRerunTone(null);setRerunStatus('');await loadProject(project.id);}catch(e){setRerunStatus('Error: '+e.message);}setRerunUploading(false);}
   function autoMatch(filename,trackList){const base=filename.replace(/\.[^.]+$/,'').replace(/[_-]/g,' ').toLowerCase().trim();const exact=trackList.find(t=>t.title.toLowerCase()===base);if(exact)return exact;let bestScore=0,bestTrack=null;for(const t of trackList){const tName=t.title.toLowerCase();let score=0;for(let i=0;i<tName.length;i++)for(let j=i+1;j<=tName.length;j++){const sub=tName.slice(i,j);if(sub.length>score&&base.includes(sub))score=sub.length;}const threshold=Math.max(4,Math.floor(tName.length*0.6));if(score>=threshold&&score>bestScore){bestScore=score;bestTrack=t;}}return bestTrack;}
   function addRevFiles(files){const audio=[...files].filter(f=>f.type.startsWith('audio/')||/\.(wav|mp3|aiff|aif|flac|m4a)$/i.test(f.name));if(!audio.length)return;const newEntries=audio.map(file=>{const matched=autoMatch(file.name,tracks);const tone=matched?getToneMemory(matched.title):DEFAULT_TONE;const entry={file,name:matched?.title||file.name.replace(/\.[^.]+$/,'').replace(/[_-]/g,' ').trim(),tone,peaks:[],peaksComputed:false,matchedTrackId:matched?.id||null,isNew:!matched};computePeaks(file).then(peaks=>{setRevFiles(prev=>prev.map(e=>e.file.name===file.name?{...e,peaks,peaksComputed:peaks.length>0}:e));});return entry;});setRevFiles(prev=>{const ex=new Set(prev.map(e=>e.file.name));return [...prev,...newEntries.filter(e=>!ex.has(e.file.name))];});}
-  async function submitRevisions(){if(!revFiles.length||!project)return;setRevUploading(true);try{for(let i=0;i<revFiles.length;i++){const entry=revFiles[i];setRevStatus('Uploading '+(i+1)+'/'+revFiles.length+': '+entry.name);const safeName=sanitize(entry.file.name);const r=await fetch(UPLOAD_WORKER_URL,{method:'POST',headers:{'X-File-Name':safeName,'X-Project-Id':project.id,'Content-Type':entry.file.type||'audio/wav'},body:entry.file});const result=await r.json();if(!result.url)continue;const tone=TONES[entry.tone];const peaks=entry.peaks.length>0?entry.peaks:[];if(entry.matchedTrackId&&!entry.isNew){const {data:existing}=await sb.from('revisions').select('version_number').eq('track_id',entry.matchedTrackId).order('version_number',{ascending:false}).limit(1);const nextVer=(existing?.[0]?.version_number||1)+1;await sb.from('revisions').update({is_active:false}).eq('track_id',entry.matchedTrackId);await sb.from('revisions').insert({track_id:entry.matchedTrackId,project_id:project.id,version_number:nextVer,label:'v'+nextVer,audio_url:result.url,mp3_url:result.url,tone_setting:entry.tone,tone_label:tone.label,is_active:true});if(peaks.length>0)await sb.from('tracks').update({peaks,tone_setting:entry.tone,tone_label:tone.label}).eq('id',entry.matchedTrackId);}else{const {data:newTrack}=await sb.from('tracks').insert({project_id:project.id,title:entry.name,audio_url:result.url,mp3_url:result.url,position:tracks.length+i,peaks,tone_setting:entry.tone,tone_label:tone.label}).select().single();if(newTrack){await sb.from('revisions').insert({track_id:newTrack.id,project_id:project.id,version_number:1,label:'v1',audio_url:result.url,mp3_url:result.url,tone_setting:entry.tone,tone_label:tone.label,is_active:true});}}if(entry.name.trim())setToneMemory(entry.name.trim(),entry.tone);}setShowRevModal(false);setRevFiles([]);setRevStatus('');await loadProject(project.id);}catch(e){setRevStatus('Error: '+e.message);}setRevUploading(false);}
+  async function submitRevisions() {
+  if (!revFiles.length || !project) return;
+  setRevUploading(true);
+
+  try {
+    for (let i = 0; i < revFiles.length; i++) {
+      const entry = revFiles[i];
+      const trackName = entry.name.trim() || entry.file.name.replace(/\.[^.]+$/, '');
+      const tone = TONES[entry.tone];
+
+      // Step 1: get GCS signed URL (same as dashboard)
+      const gcsRes = await fetch('/api/gcs-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: entry.file.name,
+          contentType: entry.file.type || 'audio/wav',
+          projectId: project.id,
+        }),
+      });
+      const gcsData = await gcsRes.json();
+      if (!gcsData.uploadUrl) throw new Error('No GCS upload URL for ' + trackName);
+
+      // Step 2: XHR upload to GCS with NC progress
+      const ncId = 'rev-' + Date.now() + '-' + i;
+      if (window.nc_startUpload) window.nc_startUpload(ncId, trackName, project.id, '', 100);
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', gcsData.uploadUrl);
+        xhr.setRequestHeader('Content-Type', entry.file.type || 'audio/wav');
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && window.nc_updateUpload) {
+            window.nc_updateUpload(ncId, e.loaded, e.total);
+          }
+        };
+        xhr.onload = () => resolve();
+        xhr.onerror = () => reject(new Error('Upload failed for ' + trackName));
+        xhr.send(entry.file);
+      });
+
+      if (window.nc_finishUpload) window.nc_finishUpload(ncId);
+      const audioUrl = gcsData.publicUrl || gcsData.url;
+
+      // Step 3: compute peaks from file
+      const peaks = entry.peaks?.length > 0 ? entry.peaks : await computePeaks(entry.file);
+
+      // Step 4: database writes — revision vs new track
+      let trackId = entry.matchedTrackId;
+
+      if (!entry.isNew && trackId) {
+        // REVISION: get highest version, deactivate old, insert new
+        const { data: existing } = await sb
+          .from('revisions')
+          .select('version_number')
+          .eq('track_id', trackId)
+          .order('version_number', { ascending: false })
+          .limit(1);
+        const nextVer = (existing?.[0]?.version_number || 1) + 1;
+
+        await sb.from('revisions').update({ is_active: false }).eq('track_id', trackId);
+        await sb.from('revisions').insert({
+          track_id: trackId,
+          project_id: project.id,
+          version_number: nextVer,
+          label: 'v' + nextVer,
+          audio_url: audioUrl,
+          tone_setting: entry.tone,
+          tone_label: tone.short,
+          is_active: true,
+        });
+        await sb.from('tracks').update({
+          audio_url: audioUrl,
+          peaks,
+          tone_setting: entry.tone,
+          tone_label: tone.short,
+        }).eq('id', trackId);
+
+      } else {
+        // NEW TRACK: insert track + v1 revision
+        const { data: newTrack } = await sb.from('tracks').insert({
+          project_id: project.id,
+          title: trackName,
+          audio_url: audioUrl,
+          tone_setting: entry.tone,
+          tone_label: tone.short,
+          peaks,
+          position: tracks.length + i,
+        }).select().single();
+
+        if (!newTrack) throw new Error('Failed to create track: ' + trackName);
+        trackId = newTrack.id;
+
+        await sb.from('revisions').insert({
+          track_id: trackId,
+          project_id: project.id,
+          version_number: 1,
+          label: 'v1',
+          audio_url: audioUrl,
+          tone_setting: entry.tone,
+          tone_label: tone.short,
+          is_active: true,
+        });
+      }
+
+      // Step 5: fire mix encode for HLS playback (fire-and-forget)
+      fetch('/api/trigger-encode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackId, projectId: project.id, audioUrl }),
+      }).catch(() => {});
+
+      // Step 6: init-master → DawDreamer → NC "Mastering..."
+      fetch('/api/init-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackId, projectId: project.id }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d?.masterId && window.nc_startMaster) {
+            window.nc_startMaster(d.masterId, trackName, project.id, entry.file?.size || 0, ncId);
+          }
+        })
+        .catch(() => {});
+
+      // Step 7: save tone preference
+      if (trackName) setToneMemory(trackName, entry.tone);
+    }
+
+    setShowRevModal(false);
+    setRevFiles([]);
+    setRevStatus('');
+    await loadProject(project.id);
+
+  } catch (e) {
+    setRevStatus('Error: ' + e.message);
+  }
+
+  setRevUploading(false);
+}
   const progress=duration?currentTime/duration:0;
   const rerunUsedTones=rerunTrack?(rerunTrack.revisions||[]).map(r=>r.tone_setting).filter(t=>t!=null):[];
   // Dedicated poller: when a new master is submitted, poll until it's ready then auto-activate
