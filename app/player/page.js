@@ -559,31 +559,35 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
   async function submitRevisions() {
   if (!revFiles.length || !project) return;
 
-  // Save tone memories, close modal and clear files immediately
-  // so the user can see NC progress while uploads run in background
-  revFiles.forEach(e => { if (e.name.trim()) setToneMemory(e.name.trim(), e.tone); });
+  // Capture everything needed before clearing state
+  revFiles.forEach(entry => { if (entry.name.trim()) setToneMemory(entry.name.trim(), entry.tone); });
   const ncIds = revFiles.map((_, i) => 'rev-' + Date.now() + '-' + i);
-  const trackList = revFiles.map((e, i) => ({
-    file: e.file,
-    name: e.name.trim() || e.file.name.replace(/\.[^.]+$/, ''),
-    matchedTrackId: e.matchedTrackId,
-    isNew: e.isNew,
-    peaks: e.peaks ?? [],
-    tone_setting: e.tone,
-    tone_label: TONES[e.tone].short,
+  const trackList = revFiles.map((entry, i) => ({
+    file: entry.file,
+    name: entry.name.trim() || entry.file.name.replace(/\.[^.]+$/, ''),
+    matchedTrackId: entry.matchedTrackId,
+    isNew: entry.isNew,
+    peaks: entry.peaks ?? [],
+    tone_setting: entry.tone,
+    tone_label: TONES[entry.tone].short,
     position: tracks.length + i,
   }));
+  const projectId = project.id;
+
+  // Close modal immediately — let React render before upload starts
   setShowRevModal(false);
   setRevFiles([]);
   setRevStatus('');
 
-  // Upload + master runs in background, NC tracks progress
-  try {
-    await startRevisionUploads(trackList, project.id, ncIds);
-    await loadProject(project.id);
-  } catch(e) {
-    console.error('[submitRevisions]', e.message);
-  }
+  // Defer upload start by one tick so React paints the closed modal first
+  setTimeout(async () => {
+    try {
+      await startRevisionUploads(trackList, projectId, ncIds);
+      await loadProject(projectId);
+    } catch(err) {
+      console.error('[submitRevisions]', err.message);
+    }
+  }, 0);
 }
   const progress=duration?currentTime/duration:0;
   const rerunUsedTones=rerunTrack?(rerunTrack.revisions||[]).map(r=>r.tone_setting).filter(t=>t!=null):[];
