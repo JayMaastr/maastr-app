@@ -28,4 +28,4 @@ EXPOSE 8080
 
 # Cloud Run sets PORT env var — Gunicorn binds to it
 # 1 worker + threads: Cloud Run handles parallelism by spawning new container instances
-CMD exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 4 --timeout 300 main:app
+CMD exec gunicorn --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 1 --timeout 300 main:app
