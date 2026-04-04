@@ -219,13 +219,8 @@ def master():
     preset      = data['preset']
     log(f"received /master request: {preset} master_id={master_id[:8]}")
     patch_supabase(master_id, {'status': 'processing'})
-    t = threading.Thread(
-        target=process_master,
-        args=(master_id, revision_id, project_id, audio_url, preset),
-        daemon=False
-    )
-    t.start()
-    return jsonify({'status': 'processing', 'masterId': master_id})
+    process_master(master_id, revision_id, project_id, audio_url, preset)
+    return jsonify({'status': 'done', 'masterId': master_id})
 
 
 if __name__ == '__main__':
