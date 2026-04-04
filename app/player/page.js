@@ -603,6 +603,7 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
 
       // Step 4: database writes — revision vs new track
       let trackId = entry.matchedTrackId;
+      let revisionId = null;
 
       if (!entry.isNew && trackId) {
         // REVISION: get highest version, deactivate old, insert new
@@ -615,7 +616,8 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
         const nextVer = (existing?.[0]?.version_number || 1) + 1;
 
         await sb.from('revisions').update({ is_active: false }).eq('track_id', trackId);
-        await sb.from('revisions').insert({
+
+        const { data: newRev } = await sb.from('revisions').insert({
           track_id: trackId,
           project_id: project.id,
           version_number: nextVer,
@@ -624,7 +626,9 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
           tone_setting: entry.tone,
           tone_label: tone.short,
           is_active: true,
-        });
+        }).select('id').single();
+        revisionId = newRev?.id;
+
         await sb.from('tracks').update({
           audio_url: audioUrl,
           peaks,
@@ -647,7 +651,7 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
         if (!newTrack) throw new Error('Failed to create track: ' + trackName);
         trackId = newTrack.id;
 
-        await sb.from('revisions').insert({
+        const { data: newRev } = await sb.from('revisions').insert({
           track_id: trackId,
           project_id: project.id,
           version_number: 1,
@@ -656,7 +660,8 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
           tone_setting: entry.tone,
           tone_label: tone.short,
           is_active: true,
-        });
+        }).select('id').single();
+        revisionId = newRev?.id;
       }
 
       // Step 5: fire mix encode for HLS playback (fire-and-forget)
@@ -666,19 +671,22 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
         body: JSON.stringify({ trackId, projectId: project.id, audioUrl }),
       }).catch(() => {});
 
-      // Step 6: init-master → DawDreamer → NC "Mastering..."
-      fetch('/api/init-master', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackId, projectId: project.id }),
-      })
-        .then(r => r.json())
-        .then(d => {
-          if (d?.masterId && window.nc_startMaster) {
-            window.nc_startMaster(d.masterId, trackName, project.id, entry.file?.size || 0, ncId);
-          }
+      // Step 6: request-master directly with the revision we just created
+      // (avoids init-master's early-return when revision already exists)
+      if (revisionId) {
+        fetch('/api/request-master', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ revisionId, preset: tone.short, projectId: project.id }),
         })
-        .catch(() => {});
+          .then(r => r.json())
+          .then(d => {
+            if (d?.masterId && window.nc_startMaster) {
+              window.nc_startMaster(d.masterId, trackName, project.id, entry.file?.size || 0, ncId);
+            }
+          })
+          .catch(() => {});
+      }
 
       // Step 7: save tone preference
       if (trackName) setToneMemory(trackName, entry.tone);
