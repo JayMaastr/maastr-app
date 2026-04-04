@@ -12,9 +12,9 @@ const TONES = [
   {label:'Warm + Normal', short:'W+N', desc:'Warm, rich and cinematic. R&B, film scores, neo-soul.'},
   {label:'Neutral + Normal',short:'N+N',desc:'Balanced master for all genres. The safe default.'},
   {label:'Bright + Normal',short:'B+N',desc:'Clear and present. Great for vocals and acoustic.'},
-  {label:'Warm + Gentle', short:'W+G', desc:'Warm and intimate. Jazz, classical, acoustic folk.'},
-  {label:'Neutral + Gentle',short:'N+G',desc:'Natural dynamics, no hype. Singer-songwriter, lo-fi.'},
-  {label:'Bright + Gentle',short:'B+G', desc:'Airy and delicate. Ambient, new age, classical.'},
+  {label:'Warm + Gentle', short:'W+S', desc:'Warm and intimate. Jazz, classical, acoustic folk.'},
+  {label:'Neutral + Gentle',short:'N+S',desc:'Natural dynamics, no hype. Singer-songwriter, lo-fi.'},
+  {label:'Bright + Gentle',short:'B+S', desc:'Airy and delicate. Ambient, new age, classical.'},
 ];
 const DEFAULT_TONE = 4;
 const TONE_BG=['rgba(232,160,32,0.82)','rgba(190,190,210,0.70)','rgba(60,180,255,0.78)','rgba(232,160,32,0.55)','rgba(160,160,185,0.48)','rgba(60,180,255,0.52)','rgba(232,160,32,0.28)','rgba(130,130,155,0.25)','rgba(60,180,255,0.26)'];
