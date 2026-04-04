@@ -15,9 +15,9 @@ const TONES=[
   {label:'Warm + Normal',short:'W+N',desc:'Warm, rich and cinematic.'},
   {label:'Neutral + Normal',short:'N+N',desc:'Balanced for all genres.'},
   {label:'Bright + Normal',short:'B+N',desc:'Clear and present.'},
-  {label:'Warm + Gentle',short:'W+G',desc:'Warm and intimate.'},
-  {label:'Neutral + Gentle',short:'N+G',desc:'Natural dynamics.'},
-  {label:'Bright + Gentle',short:'B+G',desc:'Airy and delicate.'}
+  {label:'Warm + Gentle',short:'W+S',desc:'Warm and intimate.'},
+  {label:'Neutral + Gentle',short:'N+S',desc:'Natural dynamics.'},
+  {label:'Bright + Gentle',short:'B+S',desc:'Airy and delicate.'}
 ];
 /* Brighter color swatches  warmth (col) x loudness (row opacity) */
 const TONE_BG=[
