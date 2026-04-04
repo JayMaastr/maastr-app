@@ -10,7 +10,7 @@ const sb = createClient(
 
 // Valid presets â matches TONES array short codes (Warm/Neutral/Bright x Loud/Normal/Gentle)
 // mastering service: https://mastering-production-008a.up.railway.app
-const VALID_PRESETS = ['W+L','N+L','B+L','W+N','N+N','B+N','W+G','N+G','B+G'];
+const VALID_PRESETS = ['W+L','N+L','B+L','W+N','N+N','B+N','W+S','N+S','B+S'];
 
 export async function POST(request) {
   try {
@@ -66,7 +66,7 @@ export async function POST(request) {
         await fetch(`${masteringUrl}/master`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(55000),
           body: JSON.stringify({
             masterId: master.id,
             revisionId,
