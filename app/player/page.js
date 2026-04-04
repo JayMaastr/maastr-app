@@ -558,7 +558,10 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
   function addRevFiles(files){const audio=[...files].filter(f=>f.type.startsWith('audio/')||/\.(wav|mp3|aiff|aif|flac|m4a)$/i.test(f.name));if(!audio.length)return;const newEntries=audio.map(file=>{const matched=autoMatch(file.name,tracks);const tone=matched?getToneMemory(matched.title):DEFAULT_TONE;const entry={file,name:matched?.title||file.name.replace(/\.[^.]+$/,'').replace(/[_-]/g,' ').trim(),tone,peaks:[],peaksComputed:false,matchedTrackId:matched?.id||null,isNew:!matched};computePeaks(file).then(peaks=>{setRevFiles(prev=>prev.map(e=>e.file.name===file.name?{...e,peaks,peaksComputed:peaks.length>0}:e));});return entry;});setRevFiles(prev=>{const ex=new Set(prev.map(e=>e.file.name));return [...prev,...newEntries.filter(e=>!ex.has(e.file.name))];});}
   async function submitRevisions() {
   if (!revFiles.length || !project) return;
-  setRevUploading(true);
+
+  // Save tone memories, close modal and clear files immediately
+  // so the user can see NC progress while uploads run in background
+  revFiles.forEach(e => { if (e.name.trim()) setToneMemory(e.name.trim(), e.tone); });
   const ncIds = revFiles.map((_, i) => 'rev-' + Date.now() + '-' + i);
   const trackList = revFiles.map((e, i) => ({
     file: e.file,
@@ -570,17 +573,17 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
     tone_label: TONES[e.tone].short,
     position: tracks.length + i,
   }));
+  setShowRevModal(false);
+  setRevFiles([]);
+  setRevStatus('');
+
+  // Upload + master runs in background, NC tracks progress
   try {
     await startRevisionUploads(trackList, project.id, ncIds);
-    revFiles.forEach(e => { if (e.name.trim()) setToneMemory(e.name.trim(), e.tone); });
-    setShowRevModal(false);
-    setRevFiles([]);
-    setRevStatus('');
     await loadProject(project.id);
   } catch(e) {
-    setRevStatus('Error: ' + e.message);
+    console.error('[submitRevisions]', e.message);
   }
-  setRevUploading(false);
 }
   const progress=duration?currentTime/duration:0;
   const rerunUsedTones=rerunTrack?(rerunTrack.revisions||[]).map(r=>r.tone_setting).filter(t=>t!=null):[];
