@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
+import { useUpload } from '@/app/context/UploadContext';
 import NotificationCenter from '@/app/components/NotificationCenter';
 
 function fmt(s){if(!s||isNaN(s))return'0:00';return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');}
@@ -389,7 +390,8 @@ function MasteringModal({rerunTrack,rerunTone,setRerunTone,rerunUploading,setRer
 }
 export default function Player(){
   const router = useRouter();
-  const [user,setUser]=useState(null);const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);
+  const [user,setUser]=useState(null);const { startRevisionUploads } = useUpload();
+  const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);
   useEffect(()=>{
     if(tracks.length===0||tracks.every(t=>t.peaks&&t.peaks.length>=4)) return;
     const timer=setInterval(async()=>{
@@ -557,150 +559,27 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
   async function submitRevisions() {
   if (!revFiles.length || !project) return;
   setRevUploading(true);
-
+  const ncIds = revFiles.map((_, i) => 'rev-' + Date.now() + '-' + i);
+  const trackList = revFiles.map((e, i) => ({
+    file: e.file,
+    name: e.name.trim() || e.file.name.replace(/\.[^.]+$/, ''),
+    matchedTrackId: e.matchedTrackId,
+    isNew: e.isNew,
+    peaks: e.peaks ?? [],
+    tone_setting: e.tone,
+    tone_label: TONES[e.tone].short,
+    position: tracks.length + i,
+  }));
   try {
-    for (let i = 0; i < revFiles.length; i++) {
-      const entry = revFiles[i];
-      const trackName = entry.name.trim() || entry.file.name.replace(/\.[^.]+$/, '');
-      const tone = TONES[entry.tone];
-
-      // Step 1: get GCS signed URL (same as dashboard)
-      const gcsRes = await fetch('/api/gcs-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileName: entry.file.name,
-          contentType: entry.file.type || 'audio/wav',
-          projectId: project.id,
-        }),
-      });
-      const gcsData = await gcsRes.json();
-      if (!gcsData.uploadUrl) throw new Error('No GCS upload URL for ' + trackName);
-
-      // Step 2: XHR upload to GCS with NC progress
-      const ncId = 'rev-' + Date.now() + '-' + i;
-      if (window.nc_startUpload) window.nc_startUpload(ncId, trackName, project.id, '', 100);
-
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', gcsData.uploadUrl);
-        xhr.setRequestHeader('Content-Type', entry.file.type || 'audio/wav');
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable && window.nc_updateUpload) {
-            window.nc_updateUpload(ncId, e.loaded, e.total);
-          }
-        };
-        xhr.onload = () => resolve();
-        xhr.onerror = () => reject(new Error('Upload failed for ' + trackName));
-        xhr.send(entry.file);
-      });
-
-      if (window.nc_finishUpload) window.nc_finishUpload(ncId);
-      const audioUrl = gcsData.publicUrl || gcsData.url;
-
-      // Step 3: compute peaks from file
-      const peaks = entry.peaks?.length > 0 ? entry.peaks : await computePeaks(entry.file);
-
-      // Step 4: database writes — revision vs new track
-      let trackId = entry.matchedTrackId;
-      let revisionId = null;
-
-      if (!entry.isNew && trackId) {
-        // REVISION: get highest version, deactivate old, insert new
-        const { data: existing } = await sb
-          .from('revisions')
-          .select('version_number')
-          .eq('track_id', trackId)
-          .order('version_number', { ascending: false })
-          .limit(1);
-        const nextVer = (existing?.[0]?.version_number || 1) + 1;
-
-        await sb.from('revisions').update({ is_active: false }).eq('track_id', trackId);
-
-        const { data: newRev } = await sb.from('revisions').insert({
-          track_id: trackId,
-          project_id: project.id,
-          version_number: nextVer,
-          label: 'v' + nextVer,
-          audio_url: audioUrl,
-          tone_setting: entry.tone,
-          tone_label: tone.short,
-          is_active: true,
-        }).select('id').single();
-        revisionId = newRev?.id;
-
-        await sb.from('tracks').update({
-          audio_url: audioUrl,
-          peaks,
-          tone_setting: entry.tone,
-          tone_label: tone.short,
-        }).eq('id', trackId);
-
-      } else {
-        // NEW TRACK: insert track + v1 revision
-        const { data: newTrack } = await sb.from('tracks').insert({
-          project_id: project.id,
-          title: trackName,
-          audio_url: audioUrl,
-          tone_setting: entry.tone,
-          tone_label: tone.short,
-          peaks,
-          position: tracks.length + i,
-        }).select().single();
-
-        if (!newTrack) throw new Error('Failed to create track: ' + trackName);
-        trackId = newTrack.id;
-
-        const { data: newRev } = await sb.from('revisions').insert({
-          track_id: trackId,
-          project_id: project.id,
-          version_number: 1,
-          label: 'v1',
-          audio_url: audioUrl,
-          tone_setting: entry.tone,
-          tone_label: tone.short,
-          is_active: true,
-        }).select('id').single();
-        revisionId = newRev?.id;
-      }
-
-      // Step 5: fire mix encode for HLS playback (fire-and-forget)
-      fetch('/api/trigger-encode', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackId, projectId: project.id, audioUrl }),
-      }).catch(() => {});
-
-      // Step 6: request-master directly with the revision we just created
-      // (avoids init-master's early-return when revision already exists)
-      if (revisionId) {
-        fetch('/api/request-master', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ revisionId, preset: tone.short, projectId: project.id }),
-        })
-          .then(r => r.json())
-          .then(d => {
-            if (d?.masterId && window.nc_startMaster) {
-              window.nc_startMaster(d.masterId, trackName, project.id, entry.file?.size || 0, ncId);
-            }
-          })
-          .catch(() => {});
-      }
-
-      // Step 7: save tone preference
-      if (trackName) setToneMemory(trackName, entry.tone);
-    }
-
+    await startRevisionUploads(trackList, project.id, ncIds);
+    revFiles.forEach(e => { if (e.name.trim()) setToneMemory(e.name.trim(), e.tone); });
     setShowRevModal(false);
     setRevFiles([]);
     setRevStatus('');
     await loadProject(project.id);
-
-  } catch (e) {
+  } catch(e) {
     setRevStatus('Error: ' + e.message);
   }
-
   setRevUploading(false);
 }
   const progress=duration?currentTime/duration:0;
