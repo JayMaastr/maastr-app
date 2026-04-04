@@ -578,6 +578,7 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
   setShowRevModal(false);
   setRevFiles([]);
   setRevStatus('');
+  if (window.nc_openToUploads) window.nc_openToUploads();
 
   // Defer upload start by one tick so React paints the closed modal first
   setTimeout(async () => {
