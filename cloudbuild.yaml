@@ -19,10 +19,10 @@ steps:
       - us-central1-docker.pkg.dev/maastr-vibedev/maastr-mastering/mastering:latest
       - --region=us-central1
       - --platform=managed
-      - --concurrency=25
+      - --concurrency=1
       - --min-instances=1
       - --no-cpu-throttling
-      - --max-instances=5
+      - --max-instances=10
       - --memory=2Gi
       - --cpu=2
       - --timeout=300
@@ -57,9 +57,9 @@ steps:
       - us-central1-docker.pkg.dev/maastr-vibedev/maastr-encoder/encoder:latest
       - --region=us-central1
       - --platform=managed
-      - --concurrency=25
+      - --concurrency=1
       - --min-instances=1
-      - --max-instances=5
+      - --max-instances=20
       - --memory=1Gi
       - --cpu=2
       - --timeout=300
