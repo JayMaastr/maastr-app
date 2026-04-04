@@ -1,0 +1,21 @@
+name: Create Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name to create'
+        required: true
+        default: 'stable-2026-04-04-1837UTC'
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create tag
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag ${{ github.event.inputs.tag }}
+          git push origin ${{ github.event.inputs.tag }}
