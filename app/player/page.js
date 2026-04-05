@@ -370,7 +370,7 @@ function ToneSwitcher({rerunTrack,rerunTone,setRerunTone,setRerunTrack,activeMas
         const data=await res.json();
         if(data.masterId){
           if(setPendingAutoActivate)setPendingAutoActivate({preset:rerunTone,revisionId:rev.id});
-          if(window.nc_startMaster)window.nc_startMaster(data.masterId,rerunTrack.title,project.id,0);
+          if(window.nc_startMaster)window.nc_startMaster(data.masterId,rerunTrack.title,project.id,50*1024*1024);
         }
       }catch(e){console.error('[ToneSwitcher] request-master failed:',e.message);}
     },0);
