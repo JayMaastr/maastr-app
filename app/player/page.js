@@ -368,21 +368,23 @@ function MasteringModal({rerunTrack,rerunTone,setRerunTone,rerunUploading,setRer
       </div>
       <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
         <button onClick={close} style={{padding:'10px 16px',borderRadius:8,border:'1px solid var(--border2)',background:'transparent',color:'var(--t2)',fontFamily:'var(--fm)',fontSize:13,cursor:'pointer'}}>Cancel</button>
-        <button disabled={!rerunTone||rerunUploading} onClick={async()=>{
+        <button disabled={!rerunTone||rerunUploading} onClick={()=>{
           if(_selReadyMaster){setActiveMaster(_selReadyMaster);setActiveSource('master');close();return;}
-          setRerunUploading(true);
-          try{
-            const res=await fetch('/api/request-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revisionId:_rev.id,projectId:project.id,preset:rerunTone})});
-            const data=await res.json();
-            // Start dedicated auto-activate poller
-            if(setPendingAutoActivate)setPendingAutoActivate({preset:rerunTone,revisionId:_rev.id});
-            if(data.masterId&&window.nc_startMaster){
-              let fs=50*1024*1024;
-              try{const h=await fetch(_rev.audio_url||_rev.mp3_url,{method:'HEAD'});fs=parseInt(h.headers.get('content-length')||'0')||fs;}catch(e){}
-              window.nc_startMaster(data.masterId,rerunTrack.title,project.id,fs);
-            }
-          }catch(e){console.error('remaster failed:',e);}
-          setRerunUploading(false);close();
+          // Close modal + open NC immediately, then do work in background
+          if(window.nc_openToUploads) window.nc_openToUploads();
+          close();
+          setTimeout(async()=>{
+            try{
+              const res=await fetch('/api/request-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revisionId:_rev.id,projectId:project.id,preset:rerunTone})});
+              const data=await res.json();
+              if(setPendingAutoActivate)setPendingAutoActivate({preset:rerunTone,revisionId:_rev.id});
+              if(data.masterId&&window.nc_startMaster){
+                let fs=50*1024*1024;
+                try{const h=await fetch(_rev.audio_url||_rev.mp3_url,{method:'HEAD'});fs=parseInt(h.headers.get('content-length')||'0')||fs;}catch(e){}
+                window.nc_startMaster(data.masterId,rerunTrack.title,project.id,fs);
+              }
+            }catch(e){console.error('remaster failed:',e);}
+          },0);
         }} style={{padding:'10px 20px',borderRadius:8,border:'none',background:!rerunTone?'var(--surf3)':'var(--amber)',color:!rerunTone?'var(--t3)':'#000',fontFamily:'var(--fm)',fontSize:13,fontWeight:600,cursor:!rerunTone||rerunUploading?'default':'pointer',opacity:rerunUploading?.5:1}}>{_btnLabel}</button>
       </div>
     </div>
