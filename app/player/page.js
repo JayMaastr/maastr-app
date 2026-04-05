@@ -448,13 +448,13 @@ const [showInvite,setShowInvite]=useState(false);
   const activeIdx=tracks.findIndex(t=>t.id===activeTrackId);
   const audioUrl=activeRevision?activeRevision.mp3_url||activeRevision.audio_url:activeTrack?.mp3_url||activeTrack?.audio_url;
  
-const readyMaster=activeRevision?.masters?.find(m=>m.status==='ready'&&m.hls_url); useEffect(()=>{
+const readyMaster=activeMaster?.status==='ready'&&activeMaster?.hls_url?activeMaster:activeRevision?.masters?.find(m=>m.status==='ready'&&m.hls_url); useEffect(()=>{
     const el=audioRef.current;
     if(!el||!activeTrackId)return;
     const track=tracks.find(t=>t.id===activeTrackId);
     const rev=activeRevision;
     const hlsUrl=activeSource==='master'&&readyMaster?.hls_url?readyMaster.hls_url:rev?.hls_url||track?.hls_url||null;
-    const wavUrl=activeMaster?.audio_url||rev?.audio_url||track?.audio_url||null;
+    const wavUrl=activeSource==='master'?(activeMaster?.audio_url||rev?.audio_url||track?.audio_url||null):(rev?.audio_url||track?.audio_url||null);
     if(!hlsUrl&&!wavUrl)return;
     // Destroy any existing HLS instance
     if(window.__hlsInst){window.__hlsInst.destroy();window.__hlsInst=null;}
