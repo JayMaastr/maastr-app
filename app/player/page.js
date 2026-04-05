@@ -316,7 +316,6 @@ function RevisionPill({revisions,activeRevisionId,onSwitchRevision}){
           onClick={()=>{onSwitchRevision(rev);setOpen(false);}}>
           <span style={{fontWeight:600,minWidth:24}}>{rev.label||('v'+(rev.version_number||'?'))}</span>
           <span style={{opacity:.5,fontSize:10,marginLeft:4}}>{fmtDate(rev.created_at)}</span>
-          {rev.id===activeRev?.id&&<span style={{marginLeft:'auto',opacity:.6,fontSize:9}}>playing</span>}
         </button>
       ))}
     </FixedDropdown>
