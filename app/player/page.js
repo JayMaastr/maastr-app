@@ -8,7 +8,7 @@ import NotificationCenter from '@/app/components/NotificationCenter';
 
 function fmt(s){if(!s||isNaN(s))return'0:00';return Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');}
 function sanitize(n){return n.replace(/[^a-zA-Z0-9._-]/g,'_');}
-function fmtDate(d){if(!d)return'';const dt=new Date(d);const m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return m[dt.getMonth()]+' '+dt.getDate();}
+function fmtDate(d){if(!d)return'';const dt=new Date(d);const m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];const h=dt.getHours();const min=dt.getMinutes().toString().padStart(2,'0');const ampm=h>=12?'PM':'AM';const h12=h%12||12;return m[dt.getMonth()]+' '+dt.getDate()+', '+h12+':'+min+' '+ampm;}
 const TONES=[
   {label:'Warm + Loud',short:'W+L',desc:'Rich low end, maximum punch.'},
   {label:'Neutral + Loud',short:'N+L',desc:'Balanced and loud.'},
