@@ -817,11 +817,7 @@ useEffect(()=>{
           {isOwner&&<button className="btn-upload-rev" style={{background:'var(--surf3)',color:downloadEnabled?'var(--amber)':'var(--t2)',border:'1px solid var(--border2)'}} onClick={async()=>{const nd=!downloadEnabled;setDownloadEnabled(nd);await sb.from('projects').update({downloads_enabled:nd}).eq('id',project.id);}}>
             {downloadEnabled?'Downloads On':'Downloads Off'}
           </button>}</div></div>
-      {!isOwner&&activeTrack&&<div style={{padding:'8px 16px 0'}}>
-        <button onClick={async()=>{const {data:{user:u}}=await sb.auth.getUser();const p=await sb.from('profiles').select('full_name,email').eq('id',u?.id).single();await fetch('/api/notify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trackId:activeTrack.id,projectId:project.id,clientName:p.data?.full_name,clientEmail:p.data?.email||u?.email})});alert('Engineer notified!');}} style={{padding:'10px 18px',borderRadius:8,border:'none',background:'var(--amber)',color:'#000',fontFamily:'var(--fm)',fontSize:12,fontWeight:600,cursor:'pointer',width:'100%'}}>
-          Ready for Review
-        </button>
-      </div>}
+      
       <div className="tracks-lbl">{tracks.length===0?'Waiting for tracks':`${tracks.length} ${tracks.length===1?'track':'tracks'}`}</div>
       <div style={{borderRadius:12,overflow:'hidden',border:'1px solid var(--border)'}}>
         {tracks.map((track,idx)=>(<TrackRow key={track.id} track={track} idx={idx} isActive={activeTrackId===track.id} isPlaying={activeTrackId===track.id&&playing} isMastering={!!(track.revisions?.some(r=>r.is_active&&(processingMasters[r.id]==='processing'||processingMasters[r.id]==='pending')))} noteCount={track._noteCount||0} onPlay={playTrack} onDetail={openDetail} onRename={renameTrack} onDeleteTrack={t=>setDeleteTrackConfirm(t)} onDeleteRevision={deleteRevision} onSwitchRevision={selectRevisionForTrack} activeRevisionId={selectedRevisions[track.id]?.id||(activeTrackId===track.id?activeRevision?.id:null)} onRerunRevision={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}} activeTone={(activeMaster?.track_id===track.id?activeMaster?.preset:null)||selectedRevisions[track.id]?.tone_label||(track.revisions?.find(r=>r.is_active)||track.revisions?.[track.revisions.length-1])?.tone_label||track.tone_label} onOpenToneModal={t=>{setRerunTrack(t);setRerunTone(null);setRerunStatus('');}}/>))}
