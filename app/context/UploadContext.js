@@ -8,7 +8,7 @@ export function useUpload() {
   return useContext(UploadContext);
 }
 
-export function UploadProvider({ children }) 
+export function UploadProvider({ children }) {
   const [uploads, setUploads] = useState({});
   const activeRef = useRef({});
 
