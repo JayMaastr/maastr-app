@@ -640,8 +640,12 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
   // Defer upload start by one tick so React paints the closed modal first
   setTimeout(async () => {
     try {
-      await startRevisionUploads(trackList, projectId, ncIds);
+      const results = await startRevisionUploads(trackList, projectId, ncIds);
       await loadProject(projectId);
+      // Auto-activate master for the current track (or first uploaded)
+      const match = results?.find(r => r?.revisionId && r.trackId === activeTrackId)
+                 || results?.find(r => r?.revisionId);
+      if (match) setPendingAutoActivate({ preset: match.preset, revisionId: match.revisionId });
     } catch(err) {
       console.error('[submitRevisions]', err.message);
     }
@@ -663,6 +667,7 @@ useEffect(()=>{setActiveSource('mix');},[activeTrackId]);
           clearInterval(iv);
           setPendingAutoActivate(null);
           setActiveMaster(data);
+          setActiveSource('master');
           // Master ready: track unlocks visually — no auto-play
           setTracks(prev=>prev.map(t=>{
             const rev=t.revisions?.find(r=>r.id===revisionId);
