@@ -51,7 +51,7 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
       if (!running) return;
       const dpr = window.devicePixelRatio || 1;
       const W = canvas.parentElement ? canvas.parentElement.clientWidth : 600;
-      const H = 72;
+      const H = 150;
       if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
         canvas.width = Math.round(W * dpr);
         canvas.height = Math.round(H * dpr);
@@ -123,13 +123,7 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
         ctx.fill();
       }
 
-      // Time stamps
-      ctx.font = '11px DM Mono, monospace';
-      ctx.fillStyle = 'rgba(255,255,255,0.4)';
-      ctx.fillText(fmt(prog * duration), 4, H - 4);
-      ctx.textAlign = 'right';
-      ctx.fillText(fmt(duration), W - 4, H - 4);
-      ctx.textAlign = 'left';
+      
 
       // Note markers
       if (notes && notes.length) {
@@ -171,7 +165,7 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
 
   return (
     <div className="td-wave-wrap" onClick={handleClick} style={{cursor:'pointer',width:'100%',position:'relative'}}>
-      <canvas ref={canvasRef} style={{display:'block',width:'100%',height:'72px'}}/>
+      <canvas ref={canvasRef} style={{display:'block',width:'100%',height:'150px'}}/>
     </div>
   );
 }
@@ -700,7 +694,7 @@ useEffect(()=>{
     <style>{`*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}:root{--bg:#0a0a0b;--surf:#111113;--surf2:#16161a;--surf3:#1e1e24;--border:#24242c;--border2:#2e2e38;--amber:#e8a020;--aglow:rgba(232,160,32,0.08);--text:#f0ede8;--t2:#8a8780;--t3:#4a4945;--red:#e05050;--fh:'DM Serif Display',Georgia,serif;--fm:'DM Mono','SF Mono','Menlo',monospace;}input,textarea,select{font-size:16px!important;-webkit-text-size-adjust:100%;}html,body{background:var(--bg);color:var(--text);font-family:var(--fm);-webkit-font-smoothing:antialiased;}
     .ps-waveform-bar{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--border);padding:10px 16px 8px;box-shadow:0 2px 20px rgba(0,0,0,.5);}
     .ps-track-info{display:flex;align-items:center;gap:8px;margin-bottom:8px;}.ps-track-name{font-family:var(--fh);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;}.ps-rev-badge{font-size:9px;padding:2px 8px;border-radius:4px;background:var(--aglow);border:1px solid rgba(232,160,32,.25);color:var(--amber);white-space:nowrap;flex-shrink:0;}.ps-tone-badge{font-size:9px;padding:2px 7px;border-radius:4px;background:var(--surf2);border:1px solid var(--border2);color:var(--t3);white-space:nowrap;flex-shrink:0;}
-    .ps-waveform{padding:4px 0;}.ps-time-row{display:flex;justify-content:space-between;font-size:12px;font-weight:500;color:var(--t2);margin-top:4px;}
+    .ps-waveform{padding:4px 0;background:transparent;}.ps-time-row{display:flex;justify-content:space-between;font-size:12px;font-weight:500;color:var(--t2);margin-top:4px;}
     .ps-no-track-top{font-size:12px;color:var(--t3);padding:8px 0;}
     .ps-controls-bar{position:fixed;display:flex;align-items:center;gap:12px;bottom:0;left:0;right:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 24px rgba(0,0,0,.6);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));}
     
