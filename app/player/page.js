@@ -704,7 +704,7 @@ useEffect(()=>{
     .ps-no-track-top{font-size:12px;color:var(--t3);padding:8px 0;}
     .ps-controls-bar{position:fixed;display:flex;align-items:center;gap:12px;bottom:0;left:0;right:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);box-shadow:0 -4px 24px rgba(0,0,0,.6);padding:8px 16px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));}
     
-    .ps-art{width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;}.ps-transport{flex:1;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;}
+    .ps-art{width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;}.ps-transport{position:absolute;left:50%;transform:translateX(-50%);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;}
     .ps-transport-left{display:flex;align-items:center;justify-content:flex-end;gap:14px;}
     .ps-transport-center{display:flex;align-items:center;justify-content:center;padding:0 20px;}
     .ps-transport-right{display:flex;align-items:center;justify-content:flex-start;gap:14px;}
@@ -824,7 +824,7 @@ useEffect(()=>{
       </div>
     </div>
     <div className="ps-controls-bar">
-      {project?.image_url&&<div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}><img className="ps-art" src={project.image_url} alt=""/><div style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>{project.artist&&<div style={{fontSize:11,color:"var(--t2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:"var(--fm)"}}>{project.artist}</div>}<div style={{fontSize:13,fontWeight:600,color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:"var(--fh)"}}>{activeTrack?.title||project.title}</div></div></div>}
+      {project?.image_url&&<div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0,position:"relative",zIndex:1}}><img className="ps-art" src={project.image_url} alt=""/><div style={{display:"flex",flexDirection:"column",gap:1,minWidth:0}}>{project.artist&&<div style={{fontSize:11,color:"var(--t2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:"var(--fm)"}}>{project.artist}</div>}<div style={{fontSize:13,fontWeight:600,color:"var(--t1)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:"var(--fh)"}}>{activeTrack?.title||project.title}</div></div></div>}
       <div className="ps-transport">
         <div className="ps-transport-left"><button className="ps-track-btn" onClick={()=>jumpToTrack(activeIdx-1)} disabled={!activeTrack||activeIdx<=0}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,5 9,12 19,19"/><rect x="5" y="5" width="2.5" height="14" rx="1"/></svg></button><button className="ps-skip-btn" onClick={()=>skip(-10)} disabled={!audioUrl}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.95"/></svg><span className="ps-skip-label">10</span></button></div>
         <div className="ps-transport-center"><button className="ps-play-btn" onClick={togglePlay} disabled={!audioUrl}><svg width="16" height="16" viewBox="0 0 16 16" fill="#000">{playing?<><rect x="3" y="1" width="3.5" height="14" rx="1"/><rect x="9.5" y="1" width="3.5" height="14" rx="1"/></>:<polygon points="3,1 15,8 3,15"/>}</svg></button></div>
