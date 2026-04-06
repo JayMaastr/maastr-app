@@ -8,7 +8,7 @@ export function useUpload() {
   return useContext(UploadContext);
 }
 
-export function UploadProvider({ children }) {
+export function UploadProvider({ children }) 
   const [uploads, setUploads] = useState({});
   const activeRef = useRef({});
 
@@ -70,7 +70,7 @@ export function UploadProvider({ children }) {
       trackList.forEach((t, i) => window.nc_startUpload(ncIds[i], t.name || t.file.name, projectId, '', 100));
     }
 
-    await Promise.all(trackList.map(async (t, i) => {
+    return await Promise.all(trackList.map(async (t, i) => {
       const ncId = ncIds[i];
       try {
         const gcsRes = await fetch('/api/gcs-upload', {
@@ -103,6 +103,7 @@ export function UploadProvider({ children }) {
         }
 
         finishUpload(ncId);
+        return { revisionId, preset: t.tone_label, trackId };
       } catch(e) {
         console.error('[UploadContext] failed:', t.name, e);
         setUploads(prev => ({ ...prev, [ncId]: { ...prev[ncId], error: true } }));
