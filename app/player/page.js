@@ -479,7 +479,7 @@ const [showInvite,setShowInvite]=useState(false);
     const poll=async()=>{
       const {data}=await sb.from('masters').select('id,status,revision_id').eq('project_id',project.id).in('status',['pending','processing']);
       const count=data?.length||0;
-      if(count<_prevCount){loadProject(project.id);}
+      if(count<_prevCount){await loadProject(project.id);}
       _prevCount=count;
       if(count===0){setProcessingMasters({});return;}
       const map={};data.forEach(m=>{map[m.revision_id]=m.status;});setProcessingMasters(map);
