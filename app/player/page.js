@@ -443,7 +443,9 @@ export default function Player(){
       if(data.every(t=>t.peaks&&t.peaks.length>=4)) clearInterval(timer);
     },3000);
     return ()=>clearInterval(timer);
-  },[tracks.length]);const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [activeMaster,setActiveMaster]=useState(null);const [selectedRevisions,setSelectedRevisions]=useState({});const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);
+  },[tracks.length]);
+  useEffect(()=>{tracks.forEach(t=>{if(t.duration>0||!t.audio_url)return;const a=new Audio();a.preload='metadata';a.src=t.audio_url;a.addEventListener('loadedmetadata',()=>{const dur=Math.round(a.duration);if(dur>0){sb.from('tracks').update({duration:dur}).eq('id',t.id);setTracks(prev=>prev.map(tr=>tr.id===t.id?{...tr,duration:dur}:tr));}});});},[tracks.length]);
+  const [activeTrackId,setActiveTrackId]=useState(null);const [activeRevision,setActiveRevision]=useState(null);const [activeMaster,setActiveMaster]=useState(null);const [selectedRevisions,setSelectedRevisions]=useState({});const [notes,setNotes]=useState([]);const [playing,setPlaying]=useState(false);const [currentTime,setCurrentTime]=useState(0);const [duration,setDuration]=useState(0);
   const [pendingSeek,setPendingSeek]=useState(null);const audioRef=useRef(null);
   const [detailTrack,setDetailTrack]=useState(null);
   const [showRevModal,setShowRevModal]=useState(false);const [revFiles,setRevFiles]=useState([]);const [revDragging,setRevDragging]=useState(false);const [revUploading,setRevUploading]=useState(false);const [revStatus,setRevStatus]=useState('');
