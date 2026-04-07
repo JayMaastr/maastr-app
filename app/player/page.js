@@ -792,12 +792,12 @@ useEffect(()=>{
 .ps-mobile-hero .mh-bg{width:100%;height:110px;object-fit:cover;filter:blur(12px) brightness(0.6);transform:scale(1.2);}
 .ps-mobile-hero .mh-over{position:absolute;inset:0;background:rgba(0,0,0,0.4);}
 .ps-mobile-hero .mh-content{position:absolute;bottom:0;left:0;right:0;display:flex;align-items:center;gap:12px;padding:12px 16px;}
-.ps-mobile-hero .mh-art{width:56px;height:56px;border-radius:6px;object-fit:cover;border:1px solid rgba(255,255,255,0.12);}
+.ps-mobile-hero .mh-art{width:80px;height:80px;border-radius:6px;object-fit:cover;border:1px solid rgba(255,255,255,0.12);}
 .ps-mobile-hero .mh-title{font-family:var(--fh);font-size:16px;font-weight:600;color:#fff;margin:0;}
 .ps-mobile-hero .mh-sub{font-size:11px;color:rgba(255,255,255,0.55);margin:2px 0 0;}
 @media(max-width:768px){.ps-sidebar{display:none!important;}.ps-mobile-hero{display:block;}}
 @media(min-width:769px){.ps-mobile-hero{display:none!important;}body:has(.ps-sidebar) .ps-waveform-bar{margin-left:200px;}body:has(.ps-sidebar) .ps-waveform-bar{min-height:200px;}body:has(.ps-sidebar) .page{margin-left:200px;}}`}</style>
-    {project?.image_url&&<div className="ps-sidebar"><img src={project.image_url} alt=""/><div className="ps-sidebar-info"><div className="ps-sidebar-title">{project.title}</div>{project.artist&&<div className="ps-sidebar-artist">{project.artist}</div>}<div className="ps-sidebar-meta">{tracks.length} {tracks.length===1?'track':'tracks'}</div></div></div>}
+    {project?.image_url&&<div className="ps-sidebar"><img src={project.image_url} alt=""/><div className="ps-sidebar-info"><div className="ps-sidebar-title">{project.title}</div>{project.artist&&<div className="ps-sidebar-artist">{project.artist}</div>}<div className="ps-sidebar-meta">{tracks.length} {tracks.length===1?'track':'tracks'}</div><div className="ps-sidebar-meta">{fmt(tracks.reduce((s,t)=>s+(t.duration||0),0))}</div></div></div>}
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><Link href="/" className="logo">maastr<em>.</em></Link><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||''}</span></div><div style={{display:'flex',alignItems:'center',gap:8}}><Link href="/" className="back"> Dashboard</Link>{user&&<NotificationCenter user={user}/>}<div style={{position:'relative'}}>
         <div style={{width:32,height:32,borderRadius:'50%',background:'var(--surf3)',border:'1px solid var(--border2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'var(--t2)',cursor:'pointer'}} onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
         {showMenu&&(<>
@@ -815,7 +815,7 @@ useEffect(()=>{
             </div>
           </div>
         </>)}
-      </div></div></div>    {project?.image_url&&<div className="ps-mobile-hero"><img className="mh-bg" src={project.image_url} alt=""/><div className="mh-over"/><div className="mh-content"><img className="mh-art" src={project.image_url} alt=""/><div><div className="mh-title">{project.title}</div>{project.artist&&<div className="mh-sub">{project.artist} · {tracks.length} tracks</div>}</div></div></div>}
+      </div></div></div>    {project?.image_url&&<div className="ps-mobile-hero"><img className="mh-bg" src={project.image_url} alt=""/><div className="mh-over"/><div className="mh-content"><img className="mh-art" src={project.image_url} alt=""/><div><div className="mh-title">{project.title}</div>{project.artist&&<div className="mh-sub">{project.artist} · {tracks.length} tracks · {fmt(tracks.reduce((s,t)=>s+(t.duration||0),0))}</div>}</div></div></div>}
     <div className="ps-waveform-bar">
       {activeTrack?(<><div className="ps-waveform"><Waveform peaks={activeSource==='master'&&readyMaster?.peaks?readyMaster.peaks:activeTrack.peaks} progress={progress} notes={notes} duration={duration} onSeek={handleSeek}/><div className="ps-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div></>):(<div className="ps-no-track-top">Tap a track to start listening</div>)}
     </div>
