@@ -789,7 +789,7 @@ useEffect(()=>{
 .ps-sidebar-info{padding:14px 16px;flex:1;}
 .ps-sidebar-title{font-family:var(--fh);font-size:15px;font-weight:600;color:var(--t1);margin-bottom:2px;}
 .ps-sidebar-artist{font-size:12px;color:var(--t2);margin-bottom:12px;}
-.ps-sidebar-meta{font-size:10px;color:var(--t3);letter-spacing:.04em;}
+.ps-sidebar-meta{font-size:10px;color:var(--t2);letter-spacing:.04em;}
 .ps-mobile-hero{display:none;position:relative;overflow:hidden;}
 .ps-mobile-hero .mh-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(12px) brightness(0.6);transform:scale(1.2);}
 .ps-mobile-hero .mh-over{position:absolute;inset:0;background:rgba(0,0,0,0.4);}
@@ -799,7 +799,7 @@ useEffect(()=>{
 .ps-mobile-hero .mh-sub{font-size:11px;color:rgba(255,255,255,0.55);margin:2px 0 0;}
 @media(max-width:768px){.ps-sidebar{display:none!important;}.ps-mobile-hero{display:block;}}
 @media(min-width:769px){.ps-mobile-hero{display:none!important;}body:has(.ps-sidebar) .ps-waveform-bar{margin-left:200px;}body:has(.ps-sidebar) .ps-waveform-bar{min-height:200px;}body:has(.ps-sidebar) .page{margin-left:200px;}}`}</style>
-    {project?.image_url&&<div className="ps-sidebar"><img src={project.image_url} alt=""/><div className="ps-sidebar-info"><div className="ps-sidebar-title">{project.title}</div>{project.artist&&<div className="ps-sidebar-artist">{project.artist}</div>}<div className="ps-sidebar-meta">{tracks.length} {tracks.length===1?'track':'tracks'}</div><div className="ps-sidebar-meta">{fmt(tracks.reduce((s,t)=>s+(t.duration||0),0))}</div></div></div>}
+    {project?.image_url&&<div className="ps-sidebar"><img src={project.image_url} alt=""/><div className="ps-sidebar-info"><div className="ps-sidebar-title">{project.title}</div>{project.artist&&<div className="ps-sidebar-artist">{project.artist}</div>}<div className="ps-sidebar-meta">{tracks.length} {tracks.length===1?'track':'tracks'}</div><div className="ps-sidebar-meta">Album Run Time: {fmt(tracks.reduce((s,t)=>s+(t.duration||0),0))}</div></div></div>}
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><Link href="/" className="logo">maastr<em>.</em></Link><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||''}</span></div><div style={{display:'flex',alignItems:'center',gap:8}}><Link href="/" className="back"> Dashboard</Link>{user&&<NotificationCenter user={user}/>}<div style={{position:'relative'}}>
         <div style={{width:32,height:32,borderRadius:'50%',background:'var(--surf3)',border:'1px solid var(--border2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'var(--t2)',cursor:'pointer'}} onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
         {showMenu&&(<>
