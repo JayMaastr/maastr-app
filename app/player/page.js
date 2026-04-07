@@ -789,9 +789,9 @@ useEffect(()=>{
 .ps-sidebar-artist{font-size:12px;color:var(--t2);margin-bottom:12px;}
 .ps-sidebar-meta{font-size:10px;color:var(--t3);letter-spacing:.04em;}
 .ps-mobile-hero{display:none;position:relative;overflow:hidden;}
-.ps-mobile-hero .mh-bg{width:100%;height:110px;object-fit:cover;filter:blur(12px) brightness(0.6);transform:scale(1.2);}
+.ps-mobile-hero .mh-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(12px) brightness(0.6);transform:scale(1.2);}
 .ps-mobile-hero .mh-over{position:absolute;inset:0;background:rgba(0,0,0,0.4);}
-.ps-mobile-hero .mh-content{position:absolute;bottom:0;left:0;right:0;display:flex;align-items:center;gap:12px;padding:12px 16px;}
+.ps-mobile-hero .mh-content{position:relative;display:flex;align-items:center;gap:12px;padding:12px 16px;}
 .ps-mobile-hero .mh-art{width:80px;height:80px;border-radius:6px;object-fit:cover;border:1px solid rgba(255,255,255,0.12);}
 .ps-mobile-hero .mh-title{font-family:var(--fh);font-size:16px;font-weight:600;color:#fff;margin:0;}
 .ps-mobile-hero .mh-sub{font-size:11px;color:rgba(255,255,255,0.55);margin:2px 0 0;}
