@@ -206,10 +206,10 @@ function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){
   </div>);}
 
 function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,...rest}){
-  const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [composing,setComposing]=useState(typeof window!=='undefined'&&window.innerWidth>768);const [lockedTime,setLockedTime]=useState(currentTime);const inputRef=useRef(null);
+  const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [composing,setComposing]=useState(typeof window!=='undefined'&&window.innerWidth>768);const [lockedTime,setLockedTime]=useState(currentTime);const inputRef=useRef(null);const autoPausedRef=useRef(false);
   useEffect(()=>{if(noteText==='')setLockedTime(currentTime);},[currentTime,noteText]);
-  async function handlePost(){if(!noteText.trim()||posting)return;setPosting(true);await onPost(noteText.trim(),lockedTime);setNoteText('');setComposing(false);setPosting(false);}
-  function startCompose(){setLockedTime(currentTime);setComposing(true);setTimeout(()=>inputRef.current?.focus(),80);}
+  async function handlePost(){if(!noteText.trim()||posting)return;setPosting(true);await onPost(noteText.trim(),lockedTime);setNoteText('');setComposing(typeof window!=='undefined'&&window.innerWidth>768);setPosting(false);if(autoPausedRef.current){autoPausedRef.current=false;onTogglePlay();}}
+  function startCompose(){setLockedTime(currentTime);if(isPlaying){onTogglePlay();autoPausedRef.current=true;}setComposing(true);setTimeout(()=>inputRef.current?.focus(),80);}
   if(!open)return null;
   return(<>
     <div className={'td-backdrop'+(open?' td-open':'')} onClick={onClose}/>
@@ -223,7 +223,7 @@ function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,o
       <div className="td-compose">
         {composing?(<div className="td-compose-active">
           <textarea ref={inputRef} className="td-compose-textarea" value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder={"Comment at "+fmt(lockedTime)} rows={2} autoFocus onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))handlePost();}}/>
-          <div className="td-compose-bar"><div className="td-compose-ts"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1.5"/><line x1="5" y1="3" x2="5" y2="5.5" stroke="currentColor" strokeWidth="1.2"/><line x1="5" y1="5.5" x2="6.5" y2="5.5" stroke="currentColor" strokeWidth="1.2"/></svg>{fmt(lockedTime)}</div><div style={{display:'flex',gap:8}}><button className="td-btn-cancel" onClick={()=>{setNoteText('');setComposing(false);}}>Cancel</button><button className="td-btn-post" onClick={handlePost} disabled={posting}>{posting?'Posting...':'Post'}</button></div></div>
+          <div className="td-compose-bar"><div className="td-compose-ts"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1.5"/><line x1="5" y1="3" x2="5" y2="5.5" stroke="currentColor" strokeWidth="1.2"/><line x1="5" y1="5.5" x2="6.5" y2="5.5" stroke="currentColor" strokeWidth="1.2"/></svg>{fmt(lockedTime)}</div><div style={{display:'flex',gap:8}}><button className="td-btn-cancel" onClick={()=>{setNoteText('');setComposing(false);if(autoPausedRef.current){autoPausedRef.current=false;onTogglePlay();}}}>Cancel</button><button className="td-btn-post" onClick={handlePost} disabled={posting}>{posting?'Posting...':'Post'}</button></div></div>
         </div>):(<button className="td-compose-trigger" onClick={startCompose}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add comment at {fmt(currentTime)}</button>)}
       </div>
       <div className="td-comments-scroll">
