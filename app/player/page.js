@@ -96,7 +96,7 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
       for (let i = 0; i < numBars; i++) {
         const h = heights[i];
         const played = i < cutBar;
-        const alpha = played ? 1 : 0.3;
+        const alpha = played ? 1 : 0.5;
         // Upper bar gradient
         const grad = ctx.createLinearGradient(0, cy - h, 0, cy);
         grad.addColorStop(0, played ? 'rgba(232,160,32,'+alpha+')' : 'rgba(200,140,30,'+alpha+')');
