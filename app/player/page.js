@@ -232,51 +232,10 @@ function TrackDetail({open,track,activeRevision,notes,currentTime,duration,progr
         <button className="td-close" onClick={onClose}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         <div className="td-title-block">
           <div className="td-track-name">{track?.title}</div>
-          {displayRev&&<div className="td-rev-row"><span className="td-rev-badge">{displayRev.label||'v1'}</span>{displayRev.tone_label&&<span className="td-tone-badge">{displayRev.tone_label}</span>}{revisions.length>1&&<button className="td-rev-switch" onClick={()=>setRevSwitcherOpen(v=>!v)}>{revisions.length} versions </button>}</div>}
+          
         </div>
       </div>
-      {revSwitcherOpen&&(<div className="td-rev-list">{revisions.map(rev=>(<button key={rev.id} className={'td-rev-item'+(displayRev?.id===rev.id?' active':'')} onClick={()=>{onRevisionSelect(rev);setRevSwitcherOpen(false);setActiveMaster(null);}}><span className="td-rev-item-label">{rev.label||'v?'}</span>{rev.tone_label&&<span className="td-rev-item-tone">{rev.tone_label}</span>}<span className="td-rev-item-date">{fmtDate(rev.created_at)}</span>{displayRev?.id===rev.id&&<span className="td-rev-curr">playing</span>}</button>))}</div>)}
-      {/* Master selector  shows preset pills for active revision */}
-      {displayRev&&<div className="td-master-section">
-        <div className="td-master-label">REMASTER</div>
-        <div className="td-master-pills">
-          {[
-            {short:'W+L',label:'Warm + Loud'},
-            {short:'N+L',label:'Neutral + Loud'},
-            {short:'B+L',label:'Bright + Loud'},
-            {short:'W+N',label:'Warm + Normal'},
-            {short:'N+N',label:'Neutral + Normal'},
-            {short:'B+N',label:'Bright + Normal'},
-            {short:'W+G',label:'Warm + Gentle'},
-            {short:'N+G',label:'Neutral + Gentle'},
-            {short:'B+G',label:'Bright + Gentle'}
-          ].map(preset=>{
-            const master=displayRev.masters?.find(m=>m.preset===preset.short);
-            const isActive=activeMaster?.preset===preset.short&&activeMaster?.revision_id===displayRev.id;
-            const isReady=master?.status==='ready';
-            const isPending=master?.status==='pending'||master?.status==='processing';
-            return(<button key={preset.short}
-              className={'td-master-pill'+(isActive?' active':'')+(isReady?' ready':'')+(isPending?' pending':'')}
-              title={preset.label}
-              onClick={()=>{
-                if(isActive){onMasterSelect(null);return;}
-                if(isReady){onMasterSelect({...master,revision_id:displayRev.id});return;}
-                if(!master||master.status==='failed'){
-                  fetch('/api/request-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revisionId:displayRev.id,preset:preset.short})}).catch(()=>{});
-                }
-              }}
-            >
-              <span className="td-master-pill-short">{preset.short}</span>
-              {isPending&&<span className="td-master-pill-status"></span>}
-              {isReady&&!isActive&&<span className="td-master-pill-status"></span>}
-              {isActive&&<span className="td-master-pill-status"></span>}
-            </button>);
-          })}
-        </div>
-        {activeMaster&&<button className="td-master-clear" onClick={()=>onMasterSelect(null)}>
-           Back to original
-        </button>}
-      </div>}
+      
 
       <div className="td-wave-wrap"><Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
       <div className="td-notes-scroll">
