@@ -206,7 +206,7 @@ function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){
   </div>);}
 
 function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,...rest}){
-  const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [composing,setComposing]=useState(false);const [lockedTime,setLockedTime]=useState(currentTime);const inputRef=useRef(null);
+  const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [composing,setComposing]=useState(true);const [lockedTime,setLockedTime]=useState(currentTime);const inputRef=useRef(null);
   useEffect(()=>{if(noteText==='')setLockedTime(currentTime);},[currentTime,noteText]);
   async function handlePost(){if(!noteText.trim()||posting)return;setPosting(true);await onPost(noteText.trim(),lockedTime);setNoteText('');setComposing(false);setPosting(false);}
   function startCompose(){setLockedTime(currentTime);setComposing(true);setTimeout(()=>inputRef.current?.focus(),80);}
