@@ -227,12 +227,9 @@ function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,o
         </div>):(<button className="td-compose-trigger" onClick={startCompose}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add comment at {fmt(currentTime)}</button>)}
       </div>
       <div className="td-comments-scroll">
-        {notes.length>0?notes.map(n=>(<div key={n.id} className="td-comment" onClick={()=>n.timestamp_sec!=null&&onSeekToTime(n.timestamp_sec)}>
-          <div className="td-comment-avatar">{(n.author_name||'Y')[0].toUpperCase()}</div>
-          <div className="td-comment-body">
-            <div className="td-comment-meta"><span className="td-comment-name">{n.author_name||'You'}</span>{n.timestamp_sec!=null&&<span className="td-comment-ts">{n.timestamp_label||fmt(n.timestamp_sec)}</span>}<span className="td-comment-date">{new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span></div>
-            <div className="td-comment-text">{n.body}</div>
-          </div>
+        {notes.length>0?notes.map(n=>(<div key={n.id} className="td-comment-card" onClick={()=>n.timestamp_sec!=null&&onSeekToTime(n.timestamp_sec)}>
+          <div className="td-comment-meta"><div className="td-comment-avatar">{(n.author_name||'Y')[0].toUpperCase()}</div><span className="td-comment-name">{n.author_name||'You'}</span>{n.timestamp_sec!=null&&<span className="td-comment-ts">{n.timestamp_label||fmt(n.timestamp_sec)}</span>}<span className="td-comment-date">{new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span></div>
+          <div className="td-comment-text">{n.body}</div>
         </div>)):(<div className="td-empty"><div className="td-empty-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div className="td-empty-title">No comments yet</div><div className="td-empty-sub">Play the track and leave feedback at any moment</div></div>)}
       </div>
       <div className="td-transport"><button className="td-tbtn" onClick={onPrevTrack} disabled={!canPrev}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,20 9,12 19,4"/><rect x="5" y="4" width="3" height="16"/></svg></button><button className="td-tbtn" onClick={()=>onSkip(-10)}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg><span className="td-skip-num">10</span></button><button className="td-play-btn" onClick={onTogglePlay}>{isPlaying?<svg width="22" height="22" viewBox="0 0 24 24" fill="#000"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>:<svg width="22" height="22" viewBox="0 0 24 24" fill="#000"><polygon points="6,3 20,12 6,21"/></svg>}</button><button className="td-tbtn" onClick={()=>onSkip(10)}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg><span className="td-skip-num">10</span></button><button className="td-tbtn" onClick={onNextTrack} disabled={!canNext}><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,4 15,12 5,20"/><rect x="16" y="4" width="3" height="16"/></svg></button></div>
@@ -750,7 +747,7 @@ useEffect(()=>{
     .td-compose-bar{display:flex;align-items:center;justify-content:space-between;}
     .td-btn-cancel{font-family:var(--fm);font-size:13px;padding:8px 14px;border-radius:9px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;}
     .td-btn-post{font-family:var(--fm);font-size:13px;font-weight:600;padding:8px 18px;border-radius:9px;border:none;background:var(--amber);color:#000;cursor:pointer;}.td-btn-post:disabled{opacity:.5;cursor:default;}
-    .td-comments-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+    .td-comments-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px;display:flex;flex-direction:column;gap:8px;}
     .td-comment{display:flex;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);cursor:pointer;-webkit-tap-highlight-color:transparent;}.td-comment:hover{background:var(--surf);}
     .td-comment-avatar{width:28px;height:28px;border-radius:50%;background:var(--surf2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--t2);font-weight:500;font-family:var(--fm);}
     .td-comment-body{flex:1;min-width:0;}
@@ -767,7 +764,8 @@ useEffect(()=>{
     .td-tbtn{background:none;border:none;color:var(--t3);cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;padding:4px;}.td-tbtn:disabled{opacity:.3;cursor:default;}
     .td-skip-num{position:absolute;font-size:7px;font-weight:700;color:var(--t3);font-family:var(--fm);}
     .td-play-btn{width:42px;height:42px;border-radius:50%;background:var(--amber);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-`}</style>
+
+    .td-comment-card{background:var(--surf);border-radius:10px;padding:12px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent;}.td-comment-card:hover{background:var(--surf2);}`}</style>
     {project?.image_url&&<div className="ps-sidebar"><img src={project.image_url} alt=""/><div className="ps-sidebar-info"><div className="ps-sidebar-title">{project.title}</div>{project.artist&&<div className="ps-sidebar-artist">{project.artist}</div>}<div className="ps-sidebar-meta">{tracks.length} {tracks.length===1?'track':'tracks'}</div><div className="ps-sidebar-meta">Album Run Time: {fmt(tracks.reduce((s,t)=>s+(t.duration||0),0))}</div></div></div>}
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><Link href="/" className="logo">maastr<em>.</em></Link><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||''}</span></div><div style={{display:'flex',alignItems:'center',gap:8}}>{user&&<NotificationCenter user={user}/>}<div style={{position:'relative'}}>
         <div style={{width:32,height:32,borderRadius:'50%',background:'var(--surf3)',border:'1px solid var(--border2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'var(--t2)',cursor:'pointer'}} onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
