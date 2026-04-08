@@ -100,15 +100,15 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
         // Upper bar gradient
         const grad = ctx.createLinearGradient(0, cy - h, 0, cy);
         grad.addColorStop(0, played ? 'rgba(232,160,32,'+alpha+')' : 'rgba(200,140,30,'+alpha+')');
-        grad.addColorStop(1, played ? 'rgba(200,130,20,'+alpha+')' : 'rgba(180,120,15,'+alpha+')');
+        grad.addColorStop(1, played ? 'rgba(220,148,28,'+alpha+')' : 'rgba(195,135,25,'+alpha+')');
         ctx.fillStyle = grad;
         ctx.fillRect(i * STEP, cy - h, BAR, h);
         // Reflection
-        const rGrad = ctx.createLinearGradient(0, cy, 0, cy + h * 0.6);
+        const rGrad = ctx.createLinearGradient(0, cy, 0, cy + h * 0.3);
         rGrad.addColorStop(0, 'rgba(232,160,32,'+(alpha*0.4)+')');
         rGrad.addColorStop(1, 'rgba(232,160,32,0)');
         ctx.fillStyle = rGrad;
-        ctx.fillRect(i * STEP, cy, BAR, h * 0.6);
+        ctx.fillRect(i * STEP, cy, BAR, h * 0.3);
       }
 
       // Playhead
