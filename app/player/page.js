@@ -104,11 +104,11 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
         ctx.fillStyle = grad;
         ctx.fillRect(i * STEP, cy - h, BAR, h);
         // Reflection
-        const rGrad = ctx.createLinearGradient(0, cy, 0, cy + h * 0.3);
-        rGrad.addColorStop(0, 'rgba(232,160,32,'+(alpha*0.4)+')');
-        rGrad.addColorStop(1, 'rgba(232,160,32,0)');
+        const rGrad = ctx.createLinearGradient(0, cy, 0, cy + h * 0.8);
+        rGrad.addColorStop(0, 'rgba(232,160,32,'+(alpha*0.75)+')');
+        rGrad.addColorStop(1, 'rgba(232,160,32,'+(alpha*0.15)+')');
         ctx.fillStyle = rGrad;
-        ctx.fillRect(i * STEP, cy, BAR, h * 0.3);
+        ctx.fillRect(i * STEP, cy, BAR, h * 0.8);
       }
 
       // Playhead
