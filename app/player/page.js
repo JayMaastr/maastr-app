@@ -744,7 +744,7 @@ useEffect(()=>{
     .td-count{font-size:12px;color:var(--t3);background:var(--surf2);padding:4px 10px;border-radius:12px;flex-shrink:0;font-family:var(--fm);}
     .td-wave-section{padding:12px 20px 6px;border-bottom:1px solid var(--border);flex-shrink:0;}
     .td-compose-active{display:flex;flex-direction:column;gap:8px;}
-    .td-compose-bar{display:flex;align-items:center;justify-content:space-between;}
+    .td-compose-bar{display:flex;align-items:center;justify-content:space-between;padding:4px 0 2px;}
     .td-btn-cancel{font-family:var(--fm);font-size:13px;padding:8px 14px;border-radius:9px;border:1.5px solid var(--border2);background:transparent;color:var(--t2);cursor:pointer;}
     .td-btn-post{font-family:var(--fm);font-size:13px;font-weight:600;padding:8px 18px;border-radius:9px;border:none;background:var(--amber);color:#000;cursor:pointer;}.td-btn-post:disabled{opacity:.5;cursor:default;}
     .td-comments-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px;display:flex;flex-direction:column;gap:8px;}
@@ -767,8 +767,8 @@ useEffect(()=>{
 
     .td-comment-card{background:var(--surf);border-radius:10px;padding:12px 14px;cursor:pointer;-webkit-tap-highlight-color:transparent;}.td-comment-card:hover{background:var(--surf2);}
     @media(max-width:768px){.td-wave-section canvas{height:80px!important;}.td-wave-section{padding:6px 16px 2px;}}
-    .td-compose-left{display:flex;align-items:center;gap:6px;}
-    .td-mini-btn{width:30px;height:30px;border-radius:50%;background:var(--surf2);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:var(--t2);-webkit-tap-highlight-color:transparent;}.td-mini-btn:active{transform:scale(0.92);}
+    .td-compose-left{display:flex;align-items:center;gap:10px;}
+    .td-mini-btn{width:38px;height:38px;border-radius:50%;background:var(--surf2);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;color:var(--t2);-webkit-tap-highlight-color:transparent;}.td-mini-btn:active{transform:scale(0.92);}
     .td-mini-play-active{background:var(--amber);border-color:var(--amber);color:#000;}`}</style>
     {project?.image_url&&<div className="ps-sidebar"><img src={project.image_url} alt=""/><div className="ps-sidebar-info"><div className="ps-sidebar-title">{project.title}</div>{project.artist&&<div className="ps-sidebar-artist">{project.artist}</div>}<div className="ps-sidebar-meta">{tracks.length} {tracks.length===1?'track':'tracks'}</div><div className="ps-sidebar-meta">Album Run Time: {fmt(tracks.reduce((s,t)=>s+(t.duration||0),0))}</div></div></div>}
     <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><Link href="/" className="logo">maastr<em>.</em></Link><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span><span className="breadcrumb">{project?.title||''}</span></div><div style={{display:'flex',alignItems:'center',gap:8}}>{user&&<NotificationCenter user={user}/>}<div style={{position:'relative'}}>
