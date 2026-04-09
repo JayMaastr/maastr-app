@@ -59,15 +59,15 @@ export async function POST(req) {
     const inviteUrl = origin + '/invite/' + token;
     const inviterName = inviter?.full_name || inviter?.email || 'Your engineer';
 
-    // Send email via Resend
-    const emailRes = await fetch('https://api.resend.com/emails', {
+    // Send email via SendGrid
+    const emailRes = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + process.env.SENDGRID_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'maastr <onboarding@resend.dev>',
-        to: [invitedEmail],
+        personalizations: [{ to: [{ email: invitedEmail }] }],
+        from: { email: 'getawayrecording@hotmail.com', name: 'Maastr' },
         subject: inviterName + ' invited you to review a master on maastr',
-        html: `<!DOCTYPE html>
+        content: [{ type: 'text/html', value: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#0a0a0b;font-family:'DM Mono',Menlo,monospace;color:#f0ede8">
@@ -90,12 +90,11 @@ export async function POST(req) {
     </p>
   </div>
 </body>
-</html>`,
+</html>` }],
       }),
     });
 
-    const emailData = await emailRes.json();
-    if (emailData.error) throw new Error(emailData.error.message || emailData.error);
+    if (!emailRes.ok) { const errData = await emailRes.json().catch(()=>({})); throw new Error(errData.errors?.[0]?.message || 'SendGrid error ' + emailRes.status); }
 
     return NextResponse.json({ ok: true, inviteUrl });
   } catch (err) {
