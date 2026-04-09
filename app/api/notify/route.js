@@ -42,14 +42,14 @@ export async function POST(req) {
     const projectUrl = origin + '/player?id=' + projectId;
     const senderName = clientName || clientEmail || 'Your client';
 
-    const emailRes = await fetch('https://api.resend.com/emails', {
+    const emailRes = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': 'Bearer ' + process.env.SENDGRID_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'maastr <onboarding@resend.dev>',
-        to: [owner.email],
+        personalizations: [{ to: [{ email: owner.email }] }],
+        from: { email: 'getawayrecording@hotmail.com', name: 'Maastr' },
         subject: senderName + ' has marked a master ready for review',
-        html: `<!DOCTYPE html>
+        content: [{ type: 'text/html', value: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#0a0a0b;font-family:'DM Mono',Menlo,monospace;color:#f0ede8">
@@ -70,12 +70,11 @@ export async function POST(req) {
     <p style="font-size:11px;color:#4a4945;margin:0">maastr — music mastering review platform</p>
   </div>
 </body>
-</html>`,
+</html>` }],
       }),
     });
 
-    const emailData = await emailRes.json();
-    if (emailData.error) throw new Error(emailData.error.message || JSON.stringify(emailData.error));
+    if (!emailRes.ok) { const errData = await emailRes.json().catch(()=>({})); throw new Error(errData.errors?.[0]?.message || 'SendGrid error ' + emailRes.status); }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
