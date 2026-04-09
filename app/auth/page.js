@@ -8,10 +8,11 @@ export default function Auth() {
   const [mode, setMode] = useState('signin');
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
+  const next = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') || '/' : '/';
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
-      if (session) window.location.href = '/';
+      if (session) window.location.href = next;
     });
   }, []);
 
@@ -22,7 +23,7 @@ export default function Auth() {
       if (mode === 'signin') {
         const { error } = await sb.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        window.location.href = '/';
+        window.location.href = next;
       } else if (mode === 'signup') {
         const { error } = await sb.auth.signUp({ email, password });
         if (error) throw error;
@@ -39,7 +40,7 @@ export default function Auth() {
   async function googleSignIn() {
     await sb.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + '/' }
+      options: { redirectTo: window.location.origin + next }
     });
   }
 
