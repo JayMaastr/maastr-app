@@ -4,7 +4,7 @@ import { sb } from '@/lib/supabase';
 
 export default function InvitePage({ params }) {
   const { token } = params;
-  const [state, setState] = useState('loading'); // loading | logged-out | confirm | accepting | done | error | expired
+  const [state, setState] = useState('loading'); // loading | logged-out | wrong-account | confirm | accepting | done | error | expired
   const [user, setUser] = useState(null);
   const [invite, setInvite] = useState(null);
   const [project, setProject] = useState(null);
@@ -12,43 +12,66 @@ export default function InvitePage({ params }) {
 
   useEffect(() => {
     async function load() {
-      // Look up the invite token
-      const { data: collabs, error } = await sb.from('project_collaborators')
-        .select('*, projects(id,title,artist,image_url)')
-        .eq('token', token)
-        .single();
+      // Look up invite via API (bypasses RLS)
+    const lookupRes = await fetch('/api/invite-lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const lookupData = await lookupRes.json();
 
-      if (error || !collabs) { setState('error'); setMsg('Invite not found.'); return; }
-      if (new Date(collabs.token_expires_at) < new Date()) { setState('expired'); return; }
-      if (collabs.status === 'accepted') {
-        window.location.href = '/player?id=' + collabs.project_id;
-        return;
-      }
+    if (lookupData.error === 'expired') { setState('expired'); return; }
+    if (lookupData.error === 'already_accepted') {
+      window.location.href = '/player?project=' + lookupData.project_id;
+      return;
+    }
+    if (lookupData.error || !lookupData.project) {
+      setState('error');
+      setMsg(lookupData.error || 'Invite not found.');
+      return;
+    }
 
-      setInvite(collabs);
-      setProject(collabs.projects);
+    setInvite(lookupData);
+    setProject(lookupData.project);
 
-      // Check if user is logged in
-      const { data: { user: u } } = await sb.auth.getUser();
-      setUser(u);
-      setState(u ? 'confirm' : 'logged-out');
+    // Check if user is logged in and matches invited email
+    const { data: { user: u } } = await sb.auth.getUser();
+    setUser(u);
+
+    if (!u) {
+      setState('logged-out');
+    } else if (u.email && lookupData.invited_email && u.email.toLowerCase() !== lookupData.invited_email.toLowerCase()) {
+      setState('wrong-account');
+    } else {
+      setState('confirm');
+    }
     }
     load();
   }, [token]);
 
   const accept = async () => {
     setState('accepting');
-    // Update collaborator row
-    const { error } = await sb.from('project_collaborators').update({
-      status: 'accepted',
-      user_id: user?.id || null,
-      token: null,
-      token_expires_at: null,
-    }).eq('token', token);
+    try {
+      const res = await fetch('/api/invite-accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, userId: user?.id || null }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setState('done');
+      setTimeout(() => {
+        window.location.href = '/player?project=' + (invite.project_id || invite.project?.id);
+      }, 1500);
+    } catch (err) {
+      setState('error');
+      setMsg(err.message);
+    }
+  };
 
-    if (error) { setState('error'); setMsg(error.message); return; }
-    setState('done');
-    setTimeout(() => { window.location.href = '/player?id=' + invite.project_id; }, 1500);
+  const signOut = async () => {
+    await sb.auth.signOut();
+    window.location.href = '/auth?next=/invite/' + token;
   };
 
   const goSignup = () => {
@@ -124,7 +147,16 @@ export default function InvitePage({ params }) {
           </div>
         )}
 
-        {state === 'accepting' && (
+        {state === 'wrong-account' && project && (
+            <div className="card">
+              <div className="project-title">{project.title}</div>
+              {project.artist && <div className="project-artist">{project.artist}</div>}
+              <p>You're signed in as <strong style={{color:'var(--text)'}}>{user?.email}</strong>, but this invite was sent to <strong style={{color:'var(--amber)'}}>{invite?.invited_email}</strong>.</p>
+              <button className="btn" onClick={signOut}>Sign Out & Continue</button>
+              <p style={{fontSize:11,color:'var(--t3)',marginBottom:0}}>You'll be redirected to create an account or sign in with the correct email.</p>
+            </div>
+          )}
+          {state === 'accepting' && (
           <div className="card">
             <div className="check">⏳</div>
             <h2>Accepting...</h2>
