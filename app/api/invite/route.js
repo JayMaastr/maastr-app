@@ -13,7 +13,7 @@ async function sbFetch(path, method = 'GET', body) {
       'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal',
     },
     body: body ? JSON.stringify(body) : undefined,
-  }).then(r => r.json());
+  }).then(r => r.status === 204 ? null : r.json());
 }
 
 function generateToken() {
