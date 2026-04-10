@@ -559,7 +559,7 @@ useEffect(()=>{
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setCollabDeleting(null);
-      loadCollaborators(projectId);
+      loadCollaborators(collab.project_id);
     } catch (err) {
       alert('Failed to remove: ' + err.message);
       setCollabDeleting(null);
@@ -572,7 +572,7 @@ useEffect(()=>{
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          projectId: projectId,
+          projectId: collab.project_id,
           invitedEmail: collab.invited_email,
           invitedBy: user.id,
           role: collab.role || 'client',
