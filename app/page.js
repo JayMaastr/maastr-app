@@ -33,6 +33,13 @@ function setToneMemory(name,idx) {
 function WaveformCanvas({peaks}) {
   const ref=useRef(null);
   useEffect(()=>{
+    // Check for pending invite redirect (from localStorage bridge)
+    const pendingToken = localStorage.getItem('maastr_pending_invite');
+    if (pendingToken) {
+      localStorage.removeItem('maastr_pending_invite');
+      window.location.href = '/invite/' + pendingToken;
+      return;
+    }
     const canvas=ref.current; if(!canvas) return;
     const data=(peaks&&peaks.length>4)?peaks:null;
     if(!data) return;
