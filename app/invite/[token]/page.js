@@ -60,7 +60,6 @@ export default function InvitePage({ params }) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setState('done');
-      localStorage.removeItem('maastr_pending_invite');
       setTimeout(() => {
         window.location.href = '/player?project=' + (invite.project_id || invite.project?.id);
       }, 1500);
@@ -71,13 +70,11 @@ export default function InvitePage({ params }) {
   };
 
   const signOut = async () => {
-    localStorage.setItem('maastr_pending_invite', token);
     await sb.auth.signOut();
     window.location.href = '/auth?next=/invite/' + token;
   };
 
   const goSignup = () => {
-    localStorage.setItem('maastr_pending_invite', token);
     window.location.href = '/auth?next=/invite/' + token;
   };
 
