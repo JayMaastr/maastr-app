@@ -32,30 +32,6 @@ function setToneMemory(name,idx) {
 
 function WaveformCanvas({peaks}) {
   const ref=useRef(null);
-  useEffect(()=>{
-    // Check for pending invite redirect (from localStorage bridge)
-    const pendingToken = localStorage.getItem('maastr_pending_invite');
-    if (pendingToken) {
-      localStorage.removeItem('maastr_pending_invite');
-      window.location.href = '/invite/' + pendingToken;
-      return;
-    }
-    const canvas=ref.current; if(!canvas) return;
-    const data=(peaks&&peaks.length>4)?peaks:null;
-    if(!data) return;
-    const W=canvas.offsetWidth||268,H=48;
-    canvas.width=W*devicePixelRatio;canvas.height=H*devicePixelRatio;
-    canvas.style.width=W+'px';canvas.style.height=H+'px';
-    const ctx=canvas.getContext('2d');ctx.scale(devicePixelRatio,devicePixelRatio);
-    const cy=H/2,BAR=2,GAP=1,STEP=BAR+GAP,numBars=Math.floor(W/STEP);
-    for(let i=0;i<numBars;i++){
-      const pi=Math.floor(i/numBars*data.length),amp=data[Math.min(pi,data.length-1)];
-      const h=Math.max(1.5,amp*(cy-4));
-      const g=ctx.createLinearGradient(0,cy-h,0,cy+h);
-      g.addColorStop(0,'rgba(232,160,32,.55)');g.addColorStop(.5,'rgba(232,160,32,.25)');g.addColorStop(1,'rgba(232,160,32,.06)');
-      ctx.fillStyle=g;ctx.fillRect(i*STEP,cy-h,BAR,h*2);
-    }
-  },[peaks]);
   return <canvas ref={ref} style={{display:'block',width:'100%',height:'100%'}}/>;
 }
 
