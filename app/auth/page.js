@@ -25,8 +25,10 @@ export default function Auth() {
         if (error) throw error;
         window.location.href = next;
       } else if (mode === 'signup') {
-        const { error } = await sb.auth.signUp({ email, password });
+        const { data, error } = await sb.auth.signUp({ email, password });
         if (error) throw error;
+        if (data?.user?.identities?.length === 0) { setMsg('An account with this email already exists. Try signing in instead.'); return; }
+
         setMsg('Check your email to confirm your account.');
       } else {
         const { error } = await sb.auth.signInWithOtp({ email });
