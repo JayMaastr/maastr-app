@@ -14,9 +14,15 @@ export default function NotificationCenter({ user }) {
 
   const loadNotes = useCallback(async () => {
     if (!user) return;
+    const { data: ownedProj } = await sb.from('projects').select('id').eq('user_id', user.id);
+    const { data: collabProj } = await sb.from('project_collaborators').select('project_id').eq('invited_email', user.email).eq('status', 'accepted');
+    const userProjectIds = [...(ownedProj||[]).map(p=>p.id),...(collabProj||[]).map(c=>c.project_id)];
+    if (userProjectIds.length === 0) { setNotes([]); return; }
+
     const { data } = await sb
       .from('notes')
       .select('id,body,author_name,timestamp_label,timestamp_sec,created_at,resolved,project_id,track_id,projects(title)')
+      .in('project_id', userProjectIds)
       .order('created_at', { ascending: false })
       .limit(50);
     setNotes(data || []);
