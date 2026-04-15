@@ -380,6 +380,7 @@ export default function Dashboard(){
   const [deleting,setDeleting]=useState(null);
   const [pendingInvites, setPendingInvites] = useState([]);
   const [sharedProjects, setSharedProjects] = useState([]);
+  const [noteCounts, setNoteCounts] = useState({});
 
   useEffect(()=>{
     sb.auth.getSession().then(({data:{session}})=>{
@@ -427,6 +428,21 @@ export default function Dashboard(){
       })
       .catch(() => {});
   }, [user]);
+
+  // Fetch unresolved note counts per project for dashboard badges
+  useEffect(() => {
+    if (!projects.length) return;
+    const ids = projects.map(p => p.id);
+    fetch('/api/project-note-counts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectIds: ids }),
+    })
+      .then(r => r.json())
+      .then(d => { if (d.counts) setNoteCounts(d.counts); })
+      .catch(() => {});
+  }, [projects]);
+
 
   async function acceptInvite(inv) {
     try {
@@ -626,7 +642,7 @@ export default function Dashboard(){
         <div className="grid">
           {loading?<div className="empty"><div className="empty-title">Loading</div></div>
           :projects.length===0?(<div className="empty"><div className="empty-title">No projects yet.</div><p style={{fontSize:12,marginBottom:20}}>Create your first mastering project.</p><button className="create-btn" onClick={()=>setShowModal(true)}>New Project</button></div>)
-          :projects.filter(p=>{if(!searchTerm.trim())return true;const q=searchTerm.trim().toLowerCase();return(p.title||'').toLowerCase().includes(q)||(p.artist||'').toLowerCase().includes(q);}).map((p,idx)=>(<ProjectCard key={p.id} project={p} idx={idx} onDelete={deleteProject} onSave={handleSave}/>))}
+          :projects.filter(p=>{if(!searchTerm.trim())return true;const q=searchTerm.trim().toLowerCase();return(p.title||'').toLowerCase().includes(q)||(p.artist||'').toLowerCase().includes(q);}).map((p,idx)=>(<ProjectCard key={p.id} project={p} idx={idx} unreadCount={noteCounts[p.id]||0} onDelete={deleteProject} onSave={handleSave}/>))}
         </div>
       </div>
 
