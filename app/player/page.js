@@ -541,7 +541,17 @@ useEffect(()=>{
   function playTrack(trackId){if(trackId===activeTrackId){if(audioRef.current){if(playing){audioRef.current.pause();setPlaying(false);}else{audioRef.current.play().catch(()=>{});setPlaying(true);}}return;}const _t=tracks.find(tr=>tr.id===trackId);if(!_t)return;const _rev=selectedRevisions[trackId]||_t.revisions?.find(r=>r.is_active)||_t.revisions?.[_t.revisions.length-1]||null;const _ms=processingMasters[_rev?.id];if(_ms==='pending'||_ms==='processing')return;if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(trackId);setActiveRevision(_rev);loadNotes(_t.id,_rev?.id);const _rm=_rev?.masters?.find(m=>m.status==='ready'&&m.hls_url);if(_rm){setActiveMaster(_rm);setActiveSource('master');}else{setActiveMaster(null);setActiveSource('mix');}setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
   async function saveProjectEdit(){if(!editTitle.trim())return;await sb.from('projects').update({title:editTitle.trim(),artist:editArtist.trim()}).eq('id',project.id);setProject(p=>({...p,title:editTitle.trim(),artist:editArtist.trim()}));setProjEditing(false);}
   function openProjEdit(){setEditTitle(project?.title||'');setEditArtist(project?.artist||'');setProjEditing(true);}
-  async function loadCollaborators(projId){const {data}=await sb.from('project_collaborators').select('*').eq('project_id',projId).order('created_at',{ascending:true});setCollaborators(data||[]);}
+  async function loadCollaborators(pid) {
+    try {
+      const res = await fetch('/api/project-collaborators', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: pid }),
+      });
+      const data = await res.json();
+      setCollaborators(data.collaborators || []);
+    } catch (e) { setCollaborators([]); }
+  }
   async function sendInvite(){if(!collabEmail.trim()||collabSending)return;setCollabSending(true);try{const res=await fetch('/api/invite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({projectId:project.id,invitedEmail:collabEmail.trim(),invitedBy:user.id,message:collabMsg.trim()})});const data=await res.json();if(data.error)throw new Error(data.error);setCollabEmail('');setCollabMsg('');setCollabInviting(false);loadCollaborators(project.id);}catch(err){alert('Invite failed: '+err.message);}setCollabSending(false);}
   function openDetail(track){if(track.id!==activeTrackId){if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(track.id);}const rev=selectedRevisions[track.id]||track.revisions?.find(r=>r.is_active)||track.revisions?.[track.revisions.length-1]||null;setActiveRevision(rev);loadNotes(track.id,rev?.id);setDetailTrack(track);}
   function jumpToTrack(idx){if(idx<0||idx>=tracks.length)return;const t=tracks[idx];if(audioRef.current)audioRef.current.pause();setPlaying(false);setCurrentTime(0);setDuration(0);setActiveTrackId(t.id);const rev=t.revisions?.find(r=>r.is_active)||t.revisions?.[t.revisions.length-1]||null;setActiveRevision(rev);loadNotes(t.id,rev?.id);setDetailTrack(prev=>prev?t:null);setTimeout(()=>{audioRef.current?.play().catch(()=>{});setPlaying(true);},80);}
