@@ -326,7 +326,7 @@ function ProjectCard({
             ? <img src={project.image_url} alt={project.title}/>
             : <div className="card-art-placeholder">{project.title?.[0]?.toUpperCase()||''}</div>}
         </div>
-        <div style={{padding:'12px 14px 0',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
+        <div style={{padding:'12px 14px',display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
         <div className="card-titles">
           <div className="card-title">{project.title}</div>
           <div className="card-artist">{project.artist}</div>
