@@ -107,7 +107,7 @@ function sanitizeFilename(name){return name.replace(/[^a-zA-Z0-9._-]/g,'_');}
 function urlToKey(url){try{return decodeURIComponent(new URL(url).pathname.replace(/^\//,''));}catch{return null;}}
 
 function ProjectCard({
-  project,idx,onDelete,onSave,unreadCount,onRefresh}){
+  project,idx,onDelete,onSave,unreadCount,onRefresh,role}){
   const router = useRouter();
   const [menuOpen,setMenuOpen]=useState(false);
   const [editing,setEditing]=useState(false);
@@ -298,7 +298,7 @@ function ProjectCard({
         </div>
       </div>
       <div className="card-wave"><WaveformCanvas peaks={project.peaks}/></div>
-      <div className="card-meta" style={{position:'relative'}}>{unreadCount>0&&<span style={{position:'absolute',top:-8,right:0,background:'var(--amber)',color:'#000',borderRadius:99,fontSize:9,fontWeight:700,fontFamily:'var(--fm)',minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{unreadCount}</span>}<span>{isPending?tc+' uploading':tc+' track'+(tc!==1?'s':'')}</span><span>{dateStr}</span></div>
+      <div className="card-meta" style={{position:'relative'}}>{role&&<div style={{display:'flex',alignItems:'center',gap:4,marginTop:4}}><svg viewBox="0 0 16 16" style={{width:12,height:12,fill:role==='creator'?'#e8a020':'#5dcaa5',flexShrink:0}}>{role==='creator'?<path d="M8 1l2 4 4.5.7-3.3 3.1.8 4.5L8 11.3 3.9 13.3l.8-4.5L1.5 5.7 6 5z"/>:<><circle cx="6" cy="5" r="3"/><circle cx="11" cy="5" r="3"/><path d="M0 14c0-3 2.7-5 6-5 .7 0 1.4.1 2 .3C6.8 10.2 6 11.5 6 13v1H0zm8 0c0-2.2 1.3-4 3-4s3 1.8 3 4H8z"/></>}</svg><span style={{fontSize:10,color:role==='creator'?'#e8a020':'#5dcaa5',fontFamily:'monospace',letterSpacing:'0.3px'}}>{role}</span></div>}{unreadCount>0&&<span style={{position:'absolute',top:-8,right:0,background:'var(--amber)',color:'#000',borderRadius:99,fontSize:9,fontWeight:700,fontFamily:'var(--fm)',minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{unreadCount}</span>}<span>{isPending?tc+' uploading':tc+' track'+(tc!==1?'s':'')}</span><span>{dateStr}</span></div>
     </div>
   );
   if(confirmDelete)return(
@@ -642,7 +642,7 @@ export default function Dashboard(){
         <div className="grid">
           {loading?<div className="empty"><div className="empty-title">Loading</div></div>
           :projects.length===0?(<div className="empty"><div className="empty-title">No projects yet.</div><p style={{fontSize:12,marginBottom:20}}>Create your first mastering project.</p><button className="create-btn" onClick={()=>setShowModal(true)}>New Project</button></div>)
-          :projects.filter(p=>{if(!searchTerm.trim())return true;const q=searchTerm.trim().toLowerCase();return(p.title||'').toLowerCase().includes(q)||(p.artist||'').toLowerCase().includes(q);}).map((p,idx)=>(<div key={p.id} style={{position:'relative'}}><ProjectCard project={p} idx={idx} onDelete={deleteProject} onSave={handleSave} unreadCount={noteCounts[p.id]||0}/>{noteCounts[p.id]>0&&<span style={{position:'absolute',top:8,right:8,background:'#e8a020',color:'#000',borderRadius:'50%',minWidth:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,zIndex:10,pointerEvents:'none'}}>{noteCounts[p.id]}</span>}</div>))}
+          :projects.filter(p=>{if(!searchTerm.trim())return true;const q=searchTerm.trim().toLowerCase();return(p.title||'').toLowerCase().includes(q)||(p.artist||'').toLowerCase().includes(q);}).map((p,idx)=>(<div key={p.id} style={{position:'relative'}}><ProjectCard project={p} idx={idx} onDelete={deleteProject} onSave={handleSave} unreadCount={noteCounts[p.id]||0} role="creator"/>{noteCounts[p.id]>0&&<span style={{position:'absolute',top:8,right:8,background:'#e8a020',color:'#000',borderRadius:'50%',minWidth:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,zIndex:10,pointerEvents:'none'}}>{noteCounts[p.id]}</span>}</div>))}
         </div>
       </div>
 
