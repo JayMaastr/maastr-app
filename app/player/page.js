@@ -207,7 +207,7 @@ function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){
 
 function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,...rest}){
   const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [composing,setComposing]=useState(typeof window!=='undefined'&&window.innerWidth>768);const [lockedTime,setLockedTime]=useState(currentTime);const inputRef=useRef(null);const autoPausedRef=useRef(false);
-  useEffect(()=>{if(!composing||isPlaying)setLockedTime(currentTime);},[currentTime,composing,isPlaying]);
+  useEffect(()=>{setLockedTime(currentTime);},[currentTime,composing,isPlaying]);
   async function handlePost(){if(!noteText.trim()||posting)return;setPosting(true);await onPost(noteText.trim(),lockedTime);setNoteText('');setComposing(typeof window!=='undefined'&&window.innerWidth>768);setPosting(false);if(autoPausedRef.current){autoPausedRef.current=false;onTogglePlay();}}
   function startCompose(){setLockedTime(currentTime);if(isPlaying){onTogglePlay();autoPausedRef.current=true;}setComposing(true);setTimeout(()=>inputRef.current?.focus(),80);}
   if(!open)return null;
