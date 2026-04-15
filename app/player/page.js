@@ -428,7 +428,7 @@ const [showInvite,setShowInvite]=useState(false);
     return()=>clearInterval(interval);
   },[project?.id]);
 
-  async function loadProject(pid,_trackId,_tSec){const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();if(!proj){window.location.href='/';return;}setProject(proj);loadCollaborators(proj.id);
+  async function loadProject(pid,_trackId,_tSec){const {data:proj}=await sb.from('projects').select('*').eq('id',pid).single();if(!proj){window.location.href='/';return;}setProject(proj);loadCollaborators(pid);
         setIsOwner(!!(user && proj.user_id === user.id));
         setDownloadEnabled(!!proj.downloads_enabled);
         setIsOwner(user && proj.user_id === user.id);
