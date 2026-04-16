@@ -213,7 +213,8 @@ export default function NotificationCenter({ user }) {
     const url = n.project_id
       ? `/player?project=${n.project_id}${n.track_id ? `&track=${n.track_id}&revision=${n.revision_id}&time=${n.timestamp_sec}` : ''}`
       : '/';
-    router.push(url);
+    const onPlayer = typeof window !== 'undefined' && window.location.pathname === '/player' && new URLSearchParams(window.location.search).get('project') === n.project_id;
+    if (onPlayer) router.push(url); else window.location.href = url;
   };
 
   const fmtTime = (iso) => {
