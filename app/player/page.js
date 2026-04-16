@@ -582,6 +582,7 @@ useEffect(()=>{
     const sec = parseFloat(time);
     const audio = audioRef.current;
     if (!audio) return;
+    audio.pause();
     seekVersionRef.current++;
     const myVer = seekVersionRef.current;
     let seekAttempts = 0;
@@ -589,6 +590,7 @@ useEffect(()=>{
       if (myVer !== seekVersionRef.current) return;
       if (audio.readyState >= 1 && !isNaN(audio.duration) && audio.duration > sec) {
         seekToTime(sec);
+        audio.pause();
         return;
       }
       if (++seekAttempts > 50) return;
