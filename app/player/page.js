@@ -375,6 +375,7 @@ function ToneSwitcher({rerunTrack,rerunTone,setRerunTone,setRerunTrack,activeMas
 function Player(){
   const router = useRouter();
   const searchParams = useSearchParams();
+  const teleportedFor = useRef(null);
   const [user,setUser]=useState(null);const { startRevisionUploads } = useUpload();
   const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);
   useEffect(()=>{
@@ -566,6 +567,9 @@ useEffect(()=>{
     const revisionId = searchParams.get('revision');
     const time = searchParams.get('time');
     if (!trackId || !revisionId || !time) return;
+    const tpKey = trackId + ':' + revisionId + ':' + time;
+    if (teleportedFor.current === tpKey) return;
+    teleportedFor.current = tpKey;
     const track = tracks.find(t => t.id === trackId);
     if (!track) return;
     const rev = track.revisions?.find(r => r.id === revisionId);
