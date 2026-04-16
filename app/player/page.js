@@ -32,6 +32,14 @@ function getToneMemory(n){try{const v=localStorage.getItem('mt_'+n.toLowerCase()
 function setToneMemory(n,i){try{localStorage.setItem('mt_'+n.toLowerCase().replace(/\s+/g,'_'),i);}catch{}}
 ;
 async function computePeaks(file,n=400){try{const ab=await file.arrayBuffer();const ac=new(window.AudioContext||window.webkitAudioContext)();const buf=await ac.decodeAudioData(ab);ac.close();const raw=buf.getChannelData(0),bs=Math.floor(raw.length/n),peaks=[];for(let i=0;i<n;i++){let max=0;const s=i*bs;for(let j=0;j<bs;j++){const v=Math.abs(raw[s+j]||0);if(v>max)max=v;}peaks.push(Math.min(1,max));}const mx=Math.max(...peaks)||1;return peaks.map(p=>Math.max(0.04,(p/mx)*0.95));}catch(e){return[];}}
+const MARKER_COLORS = ['#fbbf24','#60a5fa','#a78bfa','#f472b6','#34d399','#fb923c','#38bdf8','#c084fc'];
+function getUserColor(name) {
+  if (!name) return MARKER_COLORS[0];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) { h = name.charCodeAt(i) + ((h << 5) - h); h = h & h; }
+  return MARKER_COLORS[Math.abs(h) % MARKER_COLORS.length];
+}
+
 function Waveform({peaks, progress, notes, duration, onSeek}) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
@@ -125,37 +133,6 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
 
       
 
-      // Note markers with per-user colors
-      const MARKER_COLORS = ['#fbbf24','#60a5fa','#a78bfa','#f472b6','#34d399','#fb923c','#38bdf8','#c084fc'];
-      const getUserColor = (name) => {
-        if (!name) return MARKER_COLORS[0];
-        let h = 0;
-        for (let i = 0; i < name.length; i++) { h = name.charCodeAt(i) + ((h << 5) - h); h = h & h; }
-        return MARKER_COLORS[Math.abs(h) % MARKER_COLORS.length];
-      };
-      if (notes && notes.length) {
-        const activeNotes = notes.filter(n => !n.resolved);
-        for (const note of activeNotes) {
-          if (!note.timestamp_sec || !duration) continue;
-          const nx = (note.timestamp_sec / duration) * W;
-          const color = getUserColor(note.author_name);
-          // Subtle vertical line
-          ctx.save();
-          ctx.globalAlpha = 0.25;
-          ctx.fillStyle = color;
-          ctx.fillRect(nx - 1, 0, 2, H);
-          ctx.restore();
-          // Colored dot above waveform
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(nx, 8, 5, 0, Math.PI * 2);
-          ctx.fill();
-          // Dark border ring for contrast
-          ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        }
-      }
 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       rafRef.current = requestAnimationFrame(draw);
@@ -184,6 +161,21 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
   return (
     <div className="td-wave-wrap" onClick={handleClick} style={{cursor:'pointer',width:'100%',position:'relative'}}>
       <canvas ref={canvasRef} style={{display:'block',width:'100%',height:'150px'}}/>
+      {notes && duration > 0 && (
+        <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,pointerEvents:'none'}}>
+          {notes.filter(n => !n.resolved).map(note => {
+            if (!note.timestamp_sec) return null;
+            const pct = (note.timestamp_sec / duration) * 100;
+            const color = getUserColor(note.author_name);
+            return (
+              <div key={note.id} data-note-id={note.id} data-ts={note.timestamp_sec} style={{position:'absolute',left:pct+'%',top:0,bottom:0,transform:'translateX(-50%)',width:'44px',display:'flex',flexDirection:'column',alignItems:'center',pointerEvents:'auto',cursor:'pointer',paddingTop:'4px'}}>
+                <div style={{width:'12px',height:'12px',borderRadius:'50%',background:color,border:'2px solid rgba(0,0,0,0.4)',boxShadow:'0 1px 3px rgba(0,0,0,0.3)',flexShrink:0,zIndex:2}}/>
+                <div style={{width:'1.5px',flex:1,background:`linear-gradient(to bottom, ${color} 0%, transparent 100%)`,opacity:0.25,marginTop:'2px'}}/>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
