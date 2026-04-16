@@ -32,15 +32,7 @@ function getToneMemory(n){try{const v=localStorage.getItem('mt_'+n.toLowerCase()
 function setToneMemory(n,i){try{localStorage.setItem('mt_'+n.toLowerCase().replace(/\s+/g,'_'),i);}catch{}}
 ;
 async function computePeaks(file,n=400){try{const ab=await file.arrayBuffer();const ac=new(window.AudioContext||window.webkitAudioContext)();const buf=await ac.decodeAudioData(ab);ac.close();const raw=buf.getChannelData(0),bs=Math.floor(raw.length/n),peaks=[];for(let i=0;i<n;i++){let max=0;const s=i*bs;for(let j=0;j<bs;j++){const v=Math.abs(raw[s+j]||0);if(v>max)max=v;}peaks.push(Math.min(1,max));}const mx=Math.max(...peaks)||1;return peaks.map(p=>Math.max(0.04,(p/mx)*0.95));}catch(e){return[];}}
-const MARKER_COLORS = ['#fbbf24','#60a5fa','#a78bfa','#f472b6','#34d399','#fb923c','#38bdf8','#c084fc'];
-function getUserColor(name) {
-  if (!name) return MARKER_COLORS[0];
-  let h = 0;
-  for (let i = 0; i < name.length; i++) { h = name.charCodeAt(i) + ((h << 5) - h); h = h & h; }
-  return MARKER_COLORS[Math.abs(h) % MARKER_COLORS.length];
-}
-
-function Waveform({peaks, progress, notes, duration, onSeek, onMarkerClick}) {
+function Waveform({peaks, progress, notes, duration, onSeek}) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const progressRef = useRef(progress);
@@ -161,21 +153,7 @@ function Waveform({peaks, progress, notes, duration, onSeek, onMarkerClick}) {
   return (
     <div className="td-wave-wrap" onClick={handleClick} style={{cursor:'pointer',width:'100%',position:'relative'}}>
       <canvas ref={canvasRef} style={{display:'block',width:'100%',height:'150px'}}/>
-      {notes && duration > 0 && (
-        <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,pointerEvents:'none'}}>
-          {notes.filter(n => !n.resolved).map(note => {
-            if (!note.timestamp_sec) return null;
-            const pct = (note.timestamp_sec / duration) * 100;
-            const color = getUserColor(note.author_name);
-            return (
-              <div key={note.id} onClick={(e) => { e.stopPropagation(); onMarkerClick?.(note); }} data-note-id={note.id} data-ts={note.timestamp_sec} style={{position:'absolute',left:pct+'%',top:0,bottom:0,transform:'translateX(-50%)',width:'44px',display:'flex',flexDirection:'column',alignItems:'center',pointerEvents:'auto',cursor:'pointer',paddingTop:'4px'}}>
-                <div style={{width:'12px',height:'12px',borderRadius:'50%',background:color,border:'2px solid rgba(0,0,0,0.4)',boxShadow:'0 1px 3px rgba(0,0,0,0.3)',flexShrink:0,zIndex:2}}/>
-                <div style={{width:'1.5px',flex:1,background:`linear-gradient(to bottom, ${color} 0%, transparent 100%)`,opacity:0.25,marginTop:'2px'}}/>
-              </div>
-            );
-          })}
-        </div>
-      )}
+
     </div>
   );
 }
@@ -229,9 +207,7 @@ function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,o
         <div className="td-track-name">{track?.title}</div>
         {notes.length>0&&<span className="td-count">{notes.length} comment{notes.length!==1?'s':''}</span>}
       </div>
-      <div className="td-wave-section"><Waveform peaks={activeMaster?.peaks||track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}
-              onMarkerClick={(note) => { seekToTime(note.timestamp_sec); setTimeout(() => { const el = document.querySelector('[data-comment-id="' + note.id + '"]'); if (el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.outline='2px solid #fbbf24'; el.style.outlineOffset='4px'; setTimeout(() => {el.style.outline='';el.style.outlineOffset='';}, 1500); }}, 100); }}
-            /><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
+      <div className="td-wave-section"><Waveform peaks={activeMaster?.peaks||track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}            /><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
       <div className="td-compose">
         {composing?(<div className="td-compose-active">
           <textarea ref={inputRef} className="td-compose-textarea" value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder={"Comment at "+fmt(lockedTime)} rows={2} autoFocus onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))handlePost();}}/>
@@ -240,7 +216,7 @@ function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,o
       </div>
       <div className="td-comments-scroll">
         {notes.length>0?notes.map(n=>(<div key={n.id} data-comment-id={n.id} className="td-comment-card" onClick={()=>n.timestamp_sec!=null&&onSeekToTime(n.timestamp_sec)}>
-          <div className="td-comment-meta"><div className="td-comment-avatar">{(n.author_name||'Y')[0].toUpperCase()}</div><span className="td-comment-name">{n.author_name||'You'}</span>{n.timestamp_sec!=null&&<span className="td-comment-ts">{n.timestamp_label||fmt(n.timestamp_sec)}</span>}<span className="td-comment-date">{new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span></div>
+          <div className="td-comment-meta"><div className="td-comment-avatar">{(n.author_name||'Y')[0].toUpperCase()}</div><span className="td-comment-name">{n.author_name||'You'}</span>{n.timestamp_sec!=null&&<span className="td-comment-ts" onClick={() => seekToTime(n.timestamp_sec)} style={{cursor:'pointer'}}>{n.timestamp_label||fmt(n.timestamp_sec)}</span>}<span className="td-comment-date">{new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</span></div>
           <div className="td-comment-text">{n.body}</div>
         </div>)):(<div className="td-empty"><div className="td-empty-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><div className="td-empty-title">No comments yet</div><div className="td-empty-sub">Play the track and leave feedback at any moment</div></div>)}
       </div>
