@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { sb } from '@/lib/supabase';
 
-export default function NotificationCenter({ user, onNoteClick }) {
+export default function NotificationCenter({ user }) {
   const router = useRouter();
   const [notes, setNotes] = useState([]);
   const [uploads, setUploads] = useState([]);
@@ -21,7 +21,7 @@ export default function NotificationCenter({ user, onNoteClick }) {
 
     const { data } = await sb
       .from('notes')
-      .select('id,body,author_name,timestamp_label,timestamp_sec,created_at,resolved,project_id,track_id,projects(title)')
+      .select('id,body,author_name,timestamp_label,timestamp_sec,created_at,resolved,project_id,track_id,revision_id,projects(title)')
       .in('project_id', userProjectIds)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -208,10 +208,10 @@ export default function NotificationCenter({ user, onNoteClick }) {
     loadNotes();
   };
 
-  const goToNote = (n) => {if(onNoteClick){onNoteClick(n);return;}
+  const goToNote = (n) => {
     setOpen(false);
     const url = n.project_id
-      ? `/player?project=${n.project_id}${n.track_id ? `&track=${n.track_id}&time=${n.timestamp_sec}` : ''}`
+      ? `/player?project=${n.project_id}${n.track_id ? `&track=${n.track_id}&revision=${n.revision_id}&time=${n.timestamp_sec}` : ''}`
       : '/';
     router.push(url);
   };
