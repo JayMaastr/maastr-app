@@ -211,7 +211,7 @@ export default function NotificationCenter({ user, onNoteClick }) {
   const goToNote = (n) => {if(onNoteClick){onNoteClick(n);return;}
     setOpen(false);
     const url = n.project_id
-      ? `/player?project=${n.project_id}${n.track_id ? &time=${n.timestamp_sec}`&track=${n.track_id}` : ''}`
+      ? `/player?project=${n.project_id}${n.track_id ? `&track=${n.track_id}&time=${n.timestamp_sec}` : ''}`
       : '/';
     router.push(url);
   };
