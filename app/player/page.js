@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { sb, UPLOAD_WORKER_URL } from '@/lib/supabase';
@@ -372,7 +372,7 @@ function ToneSwitcher({rerunTrack,rerunTone,setRerunTone,setRerunTrack,activeMas
     </div>
   </>);
 }
-export default function Player(){
+function Player(){
   const router = useRouter();
   const searchParams = useSearchParams();
   const [user,setUser]=useState(null);const { startRevisionUploads } = useUpload();
@@ -987,3 +987,11 @@ useEffect(()=>{
         </div>
       </>)}
   </>);}
+
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <Player />
+    </Suspense>
+  );
+}
