@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { sb } from '@/lib/supabase';
 
-export default function NotificationCenter({ user }) {
+export default function NotificationCenter({ user, onNoteClick }) {
   const router = useRouter();
   const [notes, setNotes] = useState([]);
   const [uploads, setUploads] = useState([]);
@@ -208,10 +208,10 @@ export default function NotificationCenter({ user }) {
     loadNotes();
   };
 
-  const goToNote = (n) => {
+  const goToNote = (n) => {if(onNoteClick){onNoteClick(n);return;}
     setOpen(false);
     const url = n.project_id
-      ? `/player?project=${n.project_id}${n.track_id ? `&track=${n.track_id}` : ''}`
+      ? `/player?project=${n.project_id}${n.track_id ? &time=${n.timestamp_sec}`&track=${n.track_id}` : ''}`
       : '/';
     router.push(url);
   };
