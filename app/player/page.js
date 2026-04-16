@@ -376,6 +376,7 @@ function Player(){
   const router = useRouter();
   const searchParams = useSearchParams();
   const teleportedFor = useRef(null);
+  const seekVersionRef = useRef(0);
   const [user,setUser]=useState(null);const { startRevisionUploads } = useUpload();
   const [project,setProject]=useState(null);const [tracks,setTracks]=useState([]);
   useEffect(()=>{
@@ -581,10 +582,19 @@ useEffect(()=>{
     const sec = parseFloat(time);
     const audio = audioRef.current;
     if (!audio) return;
-    const doSeek = () => { seekToTime(sec); audio.removeEventListener('canplay', doSeek); };
-    if (audio.src && audio.readyState >= 2) seekToTime(sec);
-    else audio.addEventListener('canplay', doSeek);
-    return () => audio.removeEventListener('canplay', doSeek);
+    seekVersionRef.current++;
+    const myVer = seekVersionRef.current;
+    let seekAttempts = 0;
+    const trySeek = () => {
+      if (myVer !== seekVersionRef.current) return;
+      if (audio.readyState >= 1 && !isNaN(audio.duration) && audio.duration > sec) {
+        seekToTime(sec);
+        return;
+      }
+      if (++seekAttempts > 50) return;
+      setTimeout(trySeek, 100);
+    };
+    trySeek();
   }, [searchParams, tracks]);
   async function deleteCollaborator(collab) {
     try {
