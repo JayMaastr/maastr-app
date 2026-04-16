@@ -559,6 +559,7 @@ useEffect(()=>{
   function skip(secs){if(!audioRef.current)return;const t=Math.max(0,Math.min(duration||0,audioRef.current.currentTime+secs));audioRef.current.currentTime=t;setCurrentTime(t);}
   function handleSeek(pct){if(!audioRef.current||!duration)return;const t=pct*duration;audioRef.current.currentTime=t;setCurrentTime(t);}
   function seekToTime(sec){if(!audioRef.current)return;audioRef.current.currentTime=sec;setCurrentTime(sec);if(!playing){audioRef.current.play().catch(()=>{});setPlaying(true);}}
+  function handleNoteClick(n){const t=tracks.find(t=>t.id===n.track_id);if(!t)return;playTrack(t.id);setDetailTrack(t);setTimeout(()=>seekToTime(n.timestamp_sec),300);}
   async function deleteCollaborator(collab) {
     try {
       const res = await fetch('/api/invite-delete', {
@@ -873,7 +874,7 @@ useEffect(()=>{
               </div>
             </div>
           )}</>)}</div>}</div>}
-    <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><Link href="/" className="logo">maastr<em>.</em></Link><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span>{project?.image_url&&<img src={project.image_url} alt="" style={{width:22,height:22,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>}<span className="breadcrumb">{project?.title||''}</span></div><div style={{display:'flex',alignItems:'center',gap:8}}>{user&&<NotificationCenter user={user}/>}<div style={{position:'relative'}}>
+    <div className="topbar"><div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}><Link href="/" className="logo">maastr<em>.</em></Link><span style={{color:'var(--border2)',fontSize:14,flexShrink:0}}>/</span>{project?.image_url&&<img src={project.image_url} alt="" style={{width:22,height:22,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>}<span className="breadcrumb">{project?.title||''}</span></div><div style={{display:'flex',alignItems:'center',gap:8}}>{user&&<NotificationCenter user={user} onNoteClick={handleNoteClick}/>}<div style={{position:'relative'}}>
         <div style={{width:32,height:32,borderRadius:'50%',background:'var(--surf3)',border:'1px solid var(--border2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'var(--t2)',cursor:'pointer'}} onClick={()=>setShowMenu(m=>!m)}>{user?.email?.[0]?.toUpperCase()||'?'}</div>
         {showMenu&&(<>
           <div style={{position:'fixed',inset:0,zIndex:99}} onClick={()=>setShowMenu(false)}/>
