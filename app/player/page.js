@@ -125,17 +125,35 @@ function Waveform({peaks, progress, notes, duration, onSeek}) {
 
       
 
-      // Note markers
+      // Note markers with per-user colors
+      const MARKER_COLORS = ['#fbbf24','#60a5fa','#a78bfa','#f472b6','#34d399','#fb923c','#38bdf8','#c084fc'];
+      const getUserColor = (name) => {
+        if (!name) return MARKER_COLORS[0];
+        let h = 0;
+        for (let i = 0; i < name.length; i++) { h = name.charCodeAt(i) + ((h << 5) - h); h = h & h; }
+        return MARKER_COLORS[Math.abs(h) % MARKER_COLORS.length];
+      };
       if (notes && notes.length) {
         const activeNotes = notes.filter(n => !n.resolved);
         for (const note of activeNotes) {
           if (!note.timestamp_sec || !duration) continue;
           const nx = (note.timestamp_sec / duration) * W;
-          ctx.fillStyle = '#e8a020';
+          const color = getUserColor(note.author_name);
+          // Subtle vertical line
+          ctx.save();
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = color;
           ctx.fillRect(nx - 1, 0, 2, H);
+          ctx.restore();
+          // Colored dot above waveform
+          ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.arc(nx, H - 8, 3, 0, Math.PI * 2);
+          ctx.arc(nx, 8, 5, 0, Math.PI * 2);
           ctx.fill();
+          // Dark border ring for contrast
+          ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
         }
       }
 
