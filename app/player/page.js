@@ -205,7 +205,7 @@ function ToneGrid({value,usedTones=[],onChange,onSetAll,showSetAll}){
     {showSetAll&&<button className="tgm-set-all" onClick={()=>onSetAll&&onSetAll(value)}>Apply to all tracks</button>}
   </div>);}
 
-function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,...rest}){
+function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,onTogglePlay,onSkip,onPrevTrack,onNextTrack,canPrev,canNext,onSeek,onClose,onPost,onSeekToTime,activeMaster,...rest}){
   const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [composing,setComposing]=useState(typeof window!=='undefined'&&window.innerWidth>768);const [lockedTime,setLockedTime]=useState(currentTime);const inputRef=useRef(null);const autoPausedRef=useRef(false);
   useEffect(()=>{setLockedTime(currentTime);},[currentTime,composing,isPlaying]);
   async function handlePost(){if(!noteText.trim()||posting)return;setPosting(true);await onPost(noteText.trim(),lockedTime);setNoteText('');setComposing(typeof window!=='undefined'&&window.innerWidth>768);setPosting(false);if(autoPausedRef.current){autoPausedRef.current=false;onTogglePlay();}}
@@ -219,7 +219,7 @@ function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,o
         <div className="td-track-name">{track?.title}</div>
         {notes.length>0&&<span className="td-count">{notes.length} comment{notes.length!==1?'s':''}</span>}
       </div>
-      <div className="td-wave-section"><Waveform peaks={track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
+      <div className="td-wave-section"><Waveform peaks={activeMaster?.peaks||track?.peaks} progress={progress} notes={notes} duration={duration} onSeek={onSeek}/><div className="td-time-row"><span>{fmt(currentTime)}</span><span>{fmt(duration)}</span></div></div>
       <div className="td-compose">
         {composing?(<div className="td-compose-active">
           <textarea ref={inputRef} className="td-compose-textarea" value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder={"Comment at "+fmt(lockedTime)} rows={2} autoFocus onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))handlePost();}}/>
