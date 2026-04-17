@@ -197,8 +197,6 @@ function TrackDetail({open,track,notes,currentTime,duration,progress,isPlaying,o
   const [activeNoteId, setActiveNoteId] = useState(null);
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editText, setEditText] = useState('');
-  const [editingNoteId, setEditingNoteId] = useState(null);
-  const [editText, setEditText] = useState('');
   const [noteText,setNoteText]=useState('');const [posting,setPosting]=useState(false);const [composing,setComposing]=useState(typeof window!=='undefined'&&window.innerWidth>768);const [lockedTime,setLockedTime]=useState(currentTime);const inputRef=useRef(null);const autoPausedRef=useRef(false);
   useEffect(()=>{setLockedTime(currentTime);},[currentTime,composing,isPlaying]);
   async function handlePost(){if(!noteText.trim()||posting)return;setPosting(true);await onPost(noteText.trim(),lockedTime);setNoteText('');setComposing(typeof window!=='undefined'&&window.innerWidth>768);setPosting(false);if(autoPausedRef.current){autoPausedRef.current=false;onTogglePlay();}}
